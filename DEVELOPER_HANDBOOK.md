@@ -297,6 +297,12 @@ This section logs all sequential codebase transformations made by the developmen
 
 ### 📅 Changelog Log
 
+#### [2026-06-01] Bundle Targets Configured to Explicit Installer Formats
+* **Affected Files:**
+  * [MODIFY] [tauri.conf.json](file:///c:/Users/AhmadSir/Desktop/VERY%20BIG%20PROJECTS/Cube%20Launcher/apps/app/tauri.conf.json)
+* **Description:** Changed `"targets": "all"` to `"targets": ["nsis", "dmg", "deb"]`. This restricts the Windows target build to the highly portable Nullsoft NSIS `.exe` installer (setup executable) instead of trying to generate the standard WiX `.msi` package (which demands dedicated WiX v3 toolsets on the host compiling machine), while maintaining `.dmg` for macOS and `.deb` for Linux configurations.
+* **Verification:** Configuration validated; Tauri now outputs setup executables on Windows rather than raw standalone binaries or WiX bundles.
+
 #### [2026-06-01] Git Repository Initialized and Pushed to Private GitHub
 * **Affected Files:**
   * [NEW] `.git/` tracking database configuration.
