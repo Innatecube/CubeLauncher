@@ -81,8 +81,9 @@ export function parseCurseForgeVersionId(id) {
 function mapCFModToSearchHit(mod) {
   const categories = mod.categories?.map(c => c.name.toLowerCase()) || []
   
-  // Try to determine loaders
+  // Try to determine loaders and versions
   const loaders = []
+  const versions = []
   if (mod.latestFilesIndexes) {
     for (const f of mod.latestFilesIndexes) {
       const lt = f.modLoader
@@ -90,6 +91,9 @@ function mapCFModToSearchHit(mod) {
       if (lt === 4) loaders.push('fabric')
       if (lt === 5) loaders.push('quilt')
       if (lt === 6) loaders.push('neoforge')
+      if (f.gameVersion && !versions.includes(f.gameVersion)) {
+        versions.push(f.gameVersion)
+      }
     }
   }
   
@@ -110,7 +114,7 @@ function mapCFModToSearchHit(mod) {
     display_categories: display_categories,
     client_side: 'optional',
     server_side: 'optional',
-    versions: [], // filled if requested
+    versions: versions,
     installed: false,
   }
 }

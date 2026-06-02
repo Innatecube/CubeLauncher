@@ -297,6 +297,18 @@ This section logs all sequential codebase transformations made by the developmen
 
 ### 📅 Changelog Log
 
+#### [2026-06-02] Show Incompatible Search Results with Graying Out & Labels
+* **Affected Files:**
+  * [MODIFY] [curseforge.js](file:///c:/Users/AhmadSir/Desktop/VERY%20BIG%20PROJECTS/Cube%20Launcher/apps/app-frontend/src/helpers/curseforge.js)
+  * [MODIFY] [search.ts](file:///c:/Users/AhmadSir/Desktop/VERY%20BIG%20PROJECTS/Cube%20Launcher/packages/ui/src/utils/search.ts)
+  * [MODIFY] [SearchCard.vue](file:///c:/Users/AhmadSir/Desktop/VERY%20BIG%20PROJECTS/Cube%20Launcher/apps/app-frontend/src/components/ui/SearchCard.vue)
+* **Description:**
+  1. Updated the CurseForge search results mapper to extract compatible game versions from `latestFilesIndexes` and map them to `versions` array.
+  2. Modified the search facets generator in `search.ts` to ignore locked instance filters (`game_version`, `mod_loader`, etc.) when building search query parameters, enabling search queries to return mods of any version.
+  3. Added an `isCompatible` computed property to `SearchCard.vue` checking both Minecraft version and loader compatibility against the current instance.
+  4. Added card graying out via `.opacity-60`, a red warning banner detailing what version/loader is missing, and disabled/renamed the installer button to "Not Available" with a neutral color if the mod is incompatible.
+* **Verification:** Built the frontend successfully. Incompatible mods now appear in search results, are visually grayed out with explanation tags, and prevent installation, matching the requirements.
+
 #### [2026-06-01] Bundle Targets Configured to Explicit Installer Formats
 * **Affected Files:**
   * [MODIFY] [tauri.conf.json](file:///c:/Users/AhmadSir/Desktop/VERY%20BIG%20PROJECTS/Cube%20Launcher/apps/app/tauri.conf.json)

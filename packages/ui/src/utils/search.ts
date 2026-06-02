@@ -395,7 +395,17 @@ export function useSearch(
       (userFilter) =>
         !validProvidedFilters.some((providedFilter) => providedFilter.type === userFilter.type),
     )
-    const filterValues = [...filteredFilters, ...validProvidedFilters]
+    const filterValues = [
+      ...filteredFilters,
+      ...validProvidedFilters.filter(
+        (f) =>
+          f.type !== 'game_version' &&
+          f.type !== 'mod_loader' &&
+          f.type !== 'modpack_loader' &&
+          f.type !== 'shader_loader' &&
+          f.type !== 'plugin_loader'
+      ),
+    ]
 
     const andFacets: string[][] = []
     const orFacets: Record<string, string[]> = {}
