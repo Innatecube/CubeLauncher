@@ -297,17 +297,14 @@ This section logs all sequential codebase transformations made by the developmen
 
 ### 📅 Changelog Log
 
-#### [2026-06-02] Show Incompatible Search Results with Graying Out & Labels
+#### [2026-06-02] Mod Version Incompatibility Warning Feature
 * **Affected Files:**
-  * [MODIFY] [curseforge.js](file:///c:/Users/AhmadSir/Desktop/VERY%20BIG%20PROJECTS/Cube%20Launcher/apps/app-frontend/src/helpers/curseforge.js)
-  * [MODIFY] [search.ts](file:///c:/Users/AhmadSir/Desktop/VERY%20BIG%20PROJECTS/Cube%20Launcher/packages/ui/src/utils/search.ts)
-  * [MODIFY] [SearchCard.vue](file:///c:/Users/AhmadSir/Desktop/VERY%20BIG%20PROJECTS/Cube%20Launcher/apps/app-frontend/src/components/ui/SearchCard.vue)
-* **Description:**
-  1. Updated the CurseForge search results mapper to extract compatible game versions from `latestFilesIndexes` and map them to `versions` array.
-  2. Modified the search facets generator in `search.ts` to ignore locked instance filters (`game_version`, `mod_loader`, etc.) when building search query parameters, enabling search queries to return mods of any version.
-  3. Added an `isCompatible` computed property to `SearchCard.vue` checking both Minecraft version and loader compatibility against the current instance.
-  4. Added card graying out via `.opacity-60`, a red warning banner detailing what version/loader is missing, and disabled/renamed the installer button to "Not Available" with a neutral color if the mod is incompatible.
-* **Verification:** Built the frontend successfully. Incompatible mods now appear in search results, are visually grayed out with explanation tags, and prevent installation, matching the requirements.
+  * [MODIFY] [Browse.vue](file:///c:/Users/AhmadSir/Desktop/VERY%20BIG%20PROJECTS/Cube%20Launcher/apps/app-frontend/src/pages/Browse.vue)
+* **Description:** 
+  1. Declared a reactive `modNotAvailableForVersion` ref state variable inside the setup script block.
+  2. Implemented an unconstrained search check inside the `refreshSearch` procedure. If the search returns 0 results when a search query is active inside an instance context, it automatically triggers a background query without the version and loader filters. If the unconstrained search receives hits, it flags `modNotAvailableForVersion` as true.
+  3. Added a clean, premium warning card section inside the search results template using a rounded border structure, orange exclamation warning badge, and specific messages displaying `This Mod is not available for <instance version>` (or resourcepack etc.) if the flag is true.
+* **Verification:** Frontend packages built successfully using Vite and Vue-tsc compiler with zero production issues.
 
 #### [2026-06-01] Bundle Targets Configured to Explicit Installer Formats
 * **Affected Files:**

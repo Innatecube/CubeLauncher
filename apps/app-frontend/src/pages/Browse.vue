@@ -69,6 +69,7 @@ const instance: Ref<Instance | null> = ref(null)
 const instanceProjects: Ref<InstanceProject[] | null> = ref(null)
 const instanceHideInstalled = ref(false)
 const newlyInstalled = ref([])
+const modNotAvailableForVersion = ref(false)
 
 const PERSISTENT_QUERY_PARAMS = ['i', 'ai']
 
@@ -229,6 +230,46 @@ async function refreshSearch() {
     }
   }
   results.value = rawResults.result
+
+  modNotAvailableForVersion.value = false
+  if (instance.value && query.value.trim().length > 0 && results.value.total_hits === 0) {
+    try {
+      const qs = new URLSearchParams(requestParams.value)
+      const facetsRaw = qs.get('facets')
+      if (facetsRaw) {
+        const facets = JSON.parse(decodeURIComponent(facetsRaw))
+        const cleanFacets = facets.filter((group) => {
+          if (!Array.isArray(group)) return true
+          return !group.some((facet) => {
+            if (typeof facet !== 'string') return false
+            if (facet.startsWith('versions:')) return true
+            if (facet.startsWith('categories:')) {
+              const cat = facet.split(':')[1]
+              return ['fabric', 'forge', 'neoforge', 'quilt', 'liteloader', 'rift', 'canvas', 'vanilla-like', 'modded'].includes(cat)
+            }
+            return false
+          })
+        })
+        const cleanQs = new URLSearchParams(qs)
+        cleanQs.set('facets', JSON.stringify(cleanFacets))
+        cleanQs.set('limit', '1')
+        const cleanParams = `?${cleanQs.toString()}`
+
+        let unconstrainedResults
+        if (searchSource.value === 'curseforge') {
+          unconstrainedResults = await searchCurseForge(cleanParams).catch(() => null)
+        } else {
+          unconstrainedResults = await get_search_results(cleanParams).catch(() => null)
+        }
+
+        if (unconstrainedResults && unconstrainedResults.result && unconstrainedResults.result.total_hits > 0) {
+          modNotAvailableForVersion.value = true
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to perform unconstrained search check:', e)
+    }
+  }
 
   const persistentParams: LocationQuery = {}
 
@@ -502,6 +543,20 @@ await refreshSearch()
       </section>
       <section v-else-if="offline && results.total_hits === 0" class="offline">
         You are currently offline. Connect to the internet to browse Cube Launcher!
+      </section>
+      <section v-else-if="results.total_hits === 0" class="flex flex-col items-center justify-center py-16 px-4 text-center select-none">
+        <div class="max-w-md w-full p-8 bg-bg-raised border border-divider border-solid rounded-2xl flex flex-col items-center gap-4 transition-all duration-300 hover:scale-[1.01] hover:border-brand/40 shadow-lg">
+          <div class="w-16 h-16 rounded-full bg-brand-highlight flex items-center justify-center text-brand text-3xl font-extrabold shadow-inner">
+            !
+          </div>
+          <h3 class="text-xl font-bold text-primary m-0 tracking-wide">No Results Found</h3>
+          <p v-if="instance && modNotAvailableForVersion" class="text-sm text-secondary m-0 leading-relaxed max-w-sm">
+            This {{ projectType === 'mod' ? 'Mod' : projectType }} is not available for <span class="font-bold text-brand">{{ instance.game_version }}</span>.
+          </p>
+          <p v-else class="text-sm text-secondary m-0 leading-relaxed max-w-sm">
+            We couldn't find any results matching your query. Try checking your spelling or modifying your active filters.
+          </p>
+        </div>
       </section>
       <section v-else class="project-list display-mode--list instance-results" role="list">
         <SearchCard
