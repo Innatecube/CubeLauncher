@@ -75,7 +75,8 @@ impl Page for InstancesPage {
 
 impl Render for InstancesPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        match InterfaceConfig::get(cx).instances_view_mode {
+        let view_mode = InterfaceConfig::get(cx).instances_view_mode;
+        let view_element = match view_mode {
             InstancesViewMode::Cards => {
                 let cards = self.instance_table.update(cx, |table, cx| {
                     table.delegate().render_cards(cx)
@@ -85,7 +86,18 @@ impl Render for InstancesPage {
             InstancesViewMode::List => {
                 DataTable::new(&self.instance_table).bordered(false).into_any_element()
             },
-        }
+        };
+
+        div()
+            .size_full()
+            .relative()
+            .with_animation(
+                ("instances_view_mode", view_mode as usize),
+                Animation::new(std::time::Duration::from_millis(180))
+                    .with_easing(ease_out_quint()),
+                |div, delta| div.opacity(delta),
+            )
+            .child(view_element)
     }
 }
 

@@ -631,6 +631,7 @@ impl CurseforgeSearchPage {
                     .bg(theme.background)
                     .border_color(theme.border)
                     .border_1()
+                    .hover(|style| style.bg(theme.secondary.opacity(0.4)).border_color(theme.info.opacity(0.5)).shadow_sm())
                     .size_full()
                     .child(image.rounded_lg().size_16().min_w_16().min_h_16())
                     .child(

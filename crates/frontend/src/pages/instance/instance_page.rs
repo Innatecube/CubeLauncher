@@ -277,7 +277,22 @@ impl Render for InstancePage {
                         InterfaceConfig::get_mut(cx).instance_subpage = page_type;
                     })),
             )
-            .child(self.subpage.clone().into_any_element())
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .size_full()
+                    .relative()
+                    .with_animation(
+                        ("instance_tab", selected_index),
+                        Animation::new(std::time::Duration::from_millis(200))
+                            .with_easing(ease_out_quint()),
+                        |div, delta| {
+                            div.opacity(delta).top(px((1.0 - delta) * 6.0))
+                        },
+                    )
+                    .child(self.subpage.clone().into_any_element())
+            )
     }
 }
 

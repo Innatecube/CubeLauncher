@@ -1,6 +1,6 @@
 use gpui::{CursorStyle, DragMoveEvent, Hitbox, LayoutId, Point, prelude::*};
 use gpui::{AnyElement, App, AppContext, Bounds, Element, Entity, InteractiveElement, Interactivity, IntoElement, ParentElement, Pixels, Render, SharedString, StyleRefinement, Styled, Window, div, px};
-use gpui_component::{ActiveTheme, h_flex};
+use gpui_component::{ActiveTheme, StyledExt, h_flex};
 
 use crate::icon::PandoraIcon;
 
@@ -46,22 +46,31 @@ impl Render for SimpleDragPreview {
             .child(h_flex()
                 .left(px(-9.0))
                 .top(px(-9.0))
-                .p_2()
+                .px_3()
+                .py_2()
                 .gap_2()
+                .items_center()
                 .rounded(cx.theme().radius)
                 .border_1()
                 .border_color(cx.theme().border)
                 .bg(cx.theme().popover)
                 .text_color(cx.theme().popover_foreground)
-                .shadow_lg()
+                .shadow_xl()
+                .opacity(0.96)
                 .child(div()
                     .flex()
                     .items_center()
                     .justify_center()
                     .size_6()
                     .min_w_6()
+                    .text_color(cx.theme().muted_foreground)
                     .child(PandoraIcon::GripVertical))
-                .child(self.name.clone()))
+                .child(
+                    div()
+                        .text_sm()
+                        .font_medium()
+                        .child(self.name.clone())
+                ))
     }
 }
 
@@ -279,10 +288,10 @@ impl Element for Reorderable {
                                 let previous_shift = state.shift_offsets.get(index).copied().unwrap_or(px(0.0));
 
                                 let shift_amount_delta = previous_shift - desired_shift;
-                                let new_shift = if shift_amount_delta.abs() < px(1.0) {
+                                let new_shift = if shift_amount_delta.abs() < px(0.5) {
                                     desired_shift
                                 } else {
-                                    previous_shift*0.5 + desired_shift*0.5
+                                    previous_shift*0.75 + desired_shift*0.25
                                 };
 
                                 if previous_shift != new_shift {

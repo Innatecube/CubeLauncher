@@ -3,12 +3,14 @@ use std::sync::{Arc, atomic::{AtomicIsize, Ordering}};
 use bridge::{account::Account, handle::BackendHandle, message::MessageToBackend};
 use gpui::{prelude::FluentBuilder, *};
 use gpui_component::{
-    ActiveTheme, Disableable, WindowExt, button::{Button, ButtonVariants}, h_flex, input::{Input, InputState}, sheet::Sheet, v_flex,
+    ActiveTheme, Disableable, StyledExt, WindowExt, button::{Button, ButtonVariants}, h_flex, input::{Input, InputState}, sheet::Sheet, v_flex,
 };
 use rand::Rng;
 use uuid::Uuid;
 
 use crate::{component::shrinking_text::ShrinkingText, entity::{DataEntities, account::{AccountEntries, AccountExt}}, icon::PandoraIcon, interface_config::InterfaceConfig, png_render_cache};
+
+use schema::unique_bytes::UniqueBytes;
 
 const ACCOUNT_HEIGHT: f32 = 56.0;
 const ACCOUNT_GAP: f32 = 8.0;
@@ -17,6 +19,9 @@ const ACCOUNT_STRIDE: f32 = ACCOUNT_HEIGHT + ACCOUNT_GAP;
 struct AccountDragInfo {
     index: usize,
     name: SharedString,
+    head: Option<UniqueBytes>,
+    hide_skins: bool,
+    badge_text: &'static str,
     start_y: f32,
     delta: AtomicIsize,
     backend_handle: BackendHandle,
@@ -41,29 +46,80 @@ struct AnimateMove {
 
 struct AccountDragPreview {
     name: SharedString,
+    head: Option<UniqueBytes>,
+    hide_skins: bool,
+    badge_text: &'static str,
 }
 
 impl Render for AccountDragPreview {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let size = size(px(180.0), px(44.0));
+        let head = if self.hide_skins {
+            gpui::img(ImageSource::Resource(Resource::Embedded("images/hidden_head.png".into())))
+        } else if let Some(head) = &self.head {
+            let resize = png_render_cache::ImageTransformation::Resize { width: 32, height: 32 };
+            png_render_cache::render_with_transform(head.clone(), resize, cx)
+        } else {
+            gpui::img(ImageSource::Resource(Resource::Embedded("images/default_head.png".into())))
+        };
+
+        let badge_color = match self.badge_text {
+            "Ely.by" => cx.theme().info,
+            "Offline" => cx.theme().muted_foreground,
+            _ => cx.theme().accent_foreground,
+        };
 
         div()
-            .left(px(24.0))
-            .top(-size.height.half())
+            .absolute()
             .child(
                 h_flex()
-                    .w(size.width)
-                    .h(size.height)
+                    .left(px(-24.0))
+                    .top(px(-22.0))
+                    .w(px(340.0))
+                    .h(px(ACCOUNT_HEIGHT))
                     .px_3()
-                    .gap_2()
+                    .gap_3()
+                    .items_center()
                     .rounded(cx.theme().radius)
                     .border_1()
                     .border_color(cx.theme().border)
                     .bg(cx.theme().popover)
-                    .text_color(cx.theme().popover_foreground)
-                    .shadow_lg()
-                    .child(PandoraIcon::GripVertical)
-                    .child(ShrinkingText::new(self.name.clone())),
+                    .shadow_xl()
+                    .opacity(0.96)
+                    .child(
+                        div()
+                            .size_6()
+                            .min_w_6()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(PandoraIcon::GripVertical)
+                    )
+                    .child(head.size_8().min_w_8().min_h_8())
+                    .child(
+                        h_flex()
+                            .min_w_0()
+                            .flex_1()
+                            .gap_2()
+                            .items_center()
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .font_semibold()
+                                    .text_color(cx.theme().popover_foreground)
+                                    .child(ShrinkingText::new(self.name.clone()))
+                            )
+                            .child(
+                                div()
+                                    .text_size(rems(0.6875))
+                                    .px_1p5()
+                                    .py_0p5()
+                                    .rounded_sm()
+                                    .bg(cx.theme().accent.opacity(0.3))
+                                    .text_color(badge_color)
+                                    .child(self.badge_text)
+                            )
+                    )
             )
     }
 }
@@ -138,9 +194,20 @@ impl Render for Accounts {
             let is_offline = account.offline;
             let group_name: SharedString = format!("account-row-{account_index}").into();
             let uuid = account.uuid;
+            let (badge_text, badge_color) = if is_elyby {
+                ("Ely.by", cx.theme().info)
+            } else if is_offline {
+                ("Offline", cx.theme().muted_foreground)
+            } else {
+                ("Microsoft", cx.theme().accent_foreground)
+            };
+
             let drag_info = AccountDragInfo {
                 index: account_index,
                 name: account_name.clone(),
+                head: account.head.clone(),
+                hide_skins,
+                badge_text,
                 start_y,
                 backend_handle: self.backend_handle.clone(),
                 delta: AtomicIsize::new(0),
@@ -182,10 +249,10 @@ impl Render for Accounts {
                 0.0 - shift_offset
             };
             let shift_amount_delta = previous_shift_amount - desired_shift_amount;
-            let new_shift_amount = if shift_amount_delta.abs() < 1.0 {
+            let new_shift_amount = if shift_amount_delta.abs() < 0.5 {
                 desired_shift_amount
             } else {
-                previous_shift_amount*0.5 + desired_shift_amount*0.5
+                previous_shift_amount*0.75 + desired_shift_amount*0.25
             };
 
             if previous_shift_amount != new_shift_amount {
@@ -234,6 +301,9 @@ impl Render for Accounts {
                         .on_drag(drag_info, move |info: &AccountDragInfo, _, _, cx| {
                             cx.new(|_| AccountDragPreview {
                                 name: info.name.clone(),
+                                head: info.head.clone(),
+                                hide_skins: info.hide_skins,
+                                badge_text: info.badge_text,
                             })
                         }),
                 )
@@ -245,14 +315,7 @@ impl Render for Accounts {
                         .gap_2()
                         .items_center()
                         .child(div().text_color(if selected { cx.theme().info } else { cx.theme().foreground }).child(ShrinkingText::new(account_name.clone())))
-                        .child({
-                            let (badge_text, badge_color) = if is_elyby {
-                                ("Ely.by", cx.theme().info)
-                            } else if is_offline {
-                                ("Offline", cx.theme().muted_foreground)
-                            } else {
-                                ("Microsoft", cx.theme().accent_foreground)
-                            };
+                        .child(
                             div()
                                 .text_size(rems(0.6875))
                                 .px_1p5()
@@ -261,7 +324,7 @@ impl Render for Accounts {
                                 .bg(cx.theme().accent.opacity(0.3))
                                 .text_color(badge_color)
                                 .child(badge_text)
-                        })
+                        )
                 )
                 .child(
                     Button::new(("account-delete", account_index))

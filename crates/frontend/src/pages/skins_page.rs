@@ -761,11 +761,14 @@ impl Render for SkinsPage {
                     .justify_center()
                     .when_else(selected, |this| {
                         this.bg(list_active)
-                            .border_1()
+                            .border_2()
                             .border_color(list_active_border)
+                            .shadow_md()
                     }, |this| {
                         this.bg(secondary)
-                            .hover(|style| style.bg(secondary_hover))
+                            .border_1()
+                            .border_color(gpui::transparent_black())
+                            .hover(|style| style.bg(secondary_hover).border_color(list_active_border.opacity(0.4)).shadow_md())
                     })
                     .child(skin_child)
                     .when_else(active, |this| {

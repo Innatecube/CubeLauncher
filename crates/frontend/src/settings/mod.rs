@@ -202,6 +202,7 @@ impl Render for SettingsRoot {
             vec![]
         };
 
+        let selected_page_ix = self.settings.selected_page.unwrap_or(0);
         let content = v_flex()
             .size_full()
             .child(TitleBar {
@@ -209,7 +210,22 @@ impl Render for SettingsRoot {
                 right_content: vec![],
                 content_only: !self.use_custom_titlebar,
             })
-            .child(self.render_page(window, cx));
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .size_full()
+                    .relative()
+                    .with_animation(
+                        ("settings_tab", selected_page_ix),
+                        Animation::new(std::time::Duration::from_millis(200))
+                            .with_easing(ease_out_quint()),
+                        |div, delta| {
+                            div.opacity(delta).top(px((1.0 - delta) * 6.0))
+                        },
+                    )
+                    .child(self.render_page(window, cx))
+            );
 
         ResizePanel::new(&self.sidebar_state, sidebar, content)
     }

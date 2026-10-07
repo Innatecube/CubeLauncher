@@ -13,7 +13,7 @@ use crate::{
         generic_title_bar::TitleBarState,
         main_title_bar::MainTitleBar,
         page_path::PagePath,
-        reorderable::{Reorderable, ReorderableDragInfo, ReorderableState, SimpleDragPreview},
+        reorderable::{Reorderable, ReorderableDragInfo, ReorderableState},
         shrinking_text::ShrinkingText,
     },
     entity::{
@@ -538,9 +538,13 @@ impl Render for LauncherUI {
 
                     let grip = info.create_grip(cx, {
                         let name = name.clone();
+                        let icon = instance.icon.clone();
+                        let fallback_icon = instance.configuration.instance_fallback_icon.clone();
                         move |_: &ReorderableDragInfo, _, _, cx| {
-                            cx.new(|_| SimpleDragPreview {
+                            cx.new(|_| SidebarDragPreview {
                                 name: name.clone(),
+                                icon: icon.clone(),
+                                fallback_icon: fallback_icon.clone(),
                             })
                         }
                     });
@@ -1016,6 +1020,9 @@ impl Render for LauncherUI {
             .child(sidebar_pages)
             .child(footer);
 
+        let current_page = InterfaceConfig::get(cx).main_page.clone();
+        let page_anim_id = format!("main_page_{:?}", current_page);
+
         h_flex()
             .size_full()
             .child(sidebar)
@@ -1024,6 +1031,15 @@ impl Render for LauncherUI {
                     .flex_1()
                     .min_w_0()
                     .h_full()
+                    .relative()
+                    .with_animation(
+                        page_anim_id,
+                        Animation::new(std::time::Duration::from_millis(220))
+                            .with_easing(ease_out_quint()),
+                        |div, delta| {
+                            div.opacity(delta).top(px((1.0 - delta) * 8.0))
+                        },
+                    )
                     .child(self.page.clone().render(&self, window, cx))
             )
     }
@@ -1080,4 +1096,59 @@ pub fn open_bug_report_url(window: &mut Window, cx: &mut App) {
     };
 
     cx.open_url(&format!("{}/issues/new?body={}", github, urlencoding::encode(&body)));
+}
+
+pub struct SidebarDragPreview {
+    pub name: SharedString,
+    pub icon: Option<schema::unique_bytes::UniqueBytes>,
+    pub fallback_icon: Option<ustr::Ustr>,
+}
+
+impl Render for SidebarDragPreview {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let tile = crate::component::instance_icon::render_sidebar_tile(
+            self.icon.clone(),
+            &self.name,
+            self.fallback_icon.as_deref(),
+            cx,
+        );
+
+        div()
+            .absolute()
+            .child(
+                h_flex()
+                    .left(px(-185.0))
+                    .top(px(-18.0))
+                    .w(px(210.0))
+                    .p_1p5()
+                    .gap_2()
+                    .items_center()
+                    .rounded(cx.theme().radius)
+                    .border_1()
+                    .border_color(cx.theme().border)
+                    .bg(cx.theme().popover)
+                    .text_color(cx.theme().popover_foreground)
+                    .shadow_xl()
+                    .opacity(0.96)
+                    .child(tile)
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_medium()
+                            .truncate()
+                            .flex_1()
+                            .child(self.name.clone())
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .size_6()
+                            .min_w_6()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(PandoraIcon::GripVertical)
+                    )
+            )
+    }
 }

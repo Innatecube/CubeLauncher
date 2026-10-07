@@ -8,9 +8,9 @@ use gpui_component::{
 use indexmap::IndexMap;
 
 use crate::{
-    component::{clipped_element::AnimatedClippedElement, reorderable::{Reorderable, ReorderableDragInfo, ReorderableState, SimpleDragPreview}, responsive_grid::ResponsiveGrid}, entity::{
+    component::{clipped_element::AnimatedClippedElement, reorderable::{Reorderable, ReorderableDragInfo, ReorderableState}, responsive_grid::ResponsiveGrid}, entity::{
         DataEntities, instance::{InstanceAddedEvent, InstanceEntry, InstanceModifiedEvent, InstanceRemovedEvent}
-    }, icon::PandoraIcon, interface_config::InterfaceConfig, png_render_cache, root, ui
+    }, icon::PandoraIcon, interface_config::InterfaceConfig, root, ui
 };
 
 pub struct InstanceList {
@@ -190,7 +190,7 @@ impl InstanceList {
                     this.child(drag_info.create_grip(cx, {
                         let group_name = group_name.clone();
                         move |_: &ReorderableDragInfo, _, _, cx| {
-                            cx.new(|_| SimpleDragPreview {
+                            cx.new(|_| GroupDragPreview {
                                 name: group_name.clone()
                             })
                         }
@@ -295,7 +295,7 @@ impl InstanceList {
             .border_color(theme.border)
             .rounded(theme.radius_lg)
             .cursor_pointer()
-            .hover(move |style| style.bg(theme.secondary.opacity(0.35)))
+            .hover(move |style| style.bg(theme.secondary.opacity(0.45)).border_color(theme.info.opacity(0.55)))
             .on_click({
                 let name = card_instance_name.clone();
                 move |_, window, cx| {
@@ -446,3 +446,57 @@ fn render_play_button(item: &InstanceEntry, index: usize, data: DataEntities) ->
         },
     }
 }
+
+pub struct GroupDragPreview {
+    pub name: SharedString,
+}
+
+impl Render for GroupDragPreview {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .absolute()
+            .child(
+                h_flex()
+                    .left(px(-12.0))
+                    .top(px(-12.0))
+                    .px_3()
+                    .py_2()
+                    .gap_2()
+                    .items_center()
+                    .rounded(cx.theme().radius)
+                    .border_1()
+                    .border_color(cx.theme().border)
+                    .bg(cx.theme().popover)
+                    .text_color(cx.theme().popover_foreground)
+                    .shadow_xl()
+                    .opacity(0.96)
+                    .child(
+                        div()
+                            .size_6()
+                            .min_w_6()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(PandoraIcon::GripVertical)
+                    )
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_semibold()
+                            .child(self.name.clone())
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .px_1p5()
+                            .py_0p5()
+                            .rounded_sm()
+                            .bg(cx.theme().muted)
+                            .text_color(cx.theme().muted_foreground)
+                            .child("Group")
+                    )
+            )
+    }
+}
+
