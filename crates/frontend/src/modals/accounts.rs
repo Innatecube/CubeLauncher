@@ -345,46 +345,7 @@ impl Render for Accounts {
                             .on_click({
                                 let backend_handle = self.backend_handle.clone();
                                 move |_, window, cx| {
-                                    crate::root::capture_backdrop_blur(window, cx);
-                                    let name_input = cx.new(|cx| {
-                                        InputState::new(window, cx)
-                                    });
-                                    let backend_handle = backend_handle.clone();
-                                    window.open_dialog(cx, move |dialog, _, cx| {
-                                        let username = name_input.read(cx).value();
-                                        let valid_name = username.len() >= 1 && username.len() <= 16 &&
-                                            username.as_bytes().iter().all(|c| *c > 32 && *c < 127);
-
-                                        let backend_handle = backend_handle.clone();
-                                        let mut add_button = Button::new("add-elyby-submit").label(t::account::add::submit()).disabled(!valid_name).on_click(move |_, window, cx| {
-                                            window.close_all_dialogs(cx);
-
-                                            let uuid: u128 = rand::thread_rng().r#gen();
-                                            let uuid = (uuid & !0xF0000000000000000000) | 0x30000000000000000000;
-                                            let uuid = Uuid::from_u128(uuid);
-
-                                            backend_handle.send(MessageToBackend::AddElyByAccount {
-                                                name: username.clone().into(),
-                                                uuid,
-                                            });
-                                        });
-
-                                        if valid_name {
-                                            add_button = add_button.success();
-                                        }
-
-                                        dialog
-                                            .w(px(420.0))
-                                            .close_button(true)
-                                            .overlay_closable(true)
-                                            .title(t::account::add::elyby())
-                                            .child(v_flex()
-                                                .gap_3()
-                                                .pt_1()
-                                                .child(crate::labelled(t::account::name(), Input::new(&name_input)))
-                                                .child(add_button)
-                                            )
-                                    });
+                                    open_add_elyby_dialog(&backend_handle, window, cx);
                                 }
                             })
                     )
@@ -399,58 +360,7 @@ impl Render for Accounts {
                             .on_click({
                                 let backend_handle = self.backend_handle.clone();
                                 move |_, window, cx| {
-                                    crate::root::capture_backdrop_blur(window, cx);
-                                    let name_input = cx.new(|cx| {
-                                        InputState::new(window, cx)
-                                    });
-                                    let uuid_input = cx.new(|cx| {
-                                        InputState::new(window, cx).placeholder(t::account::uuid_random())
-                                    });
-                                    let backend_handle = backend_handle.clone();
-                                    window.open_dialog(cx, move |dialog, _, cx| {
-                                        let username = name_input.read(cx).value();
-                                        let valid_name = username.len() >= 1 && username.len() <= 16 &&
-                                            username.as_bytes().iter().all(|c| *c > 32 && *c < 127);
-                                        let uuid = uuid_input.read(cx).value();
-                                        let valid_uuid = uuid.is_empty() || Uuid::try_parse(&uuid).is_ok();
-
-                                        let valid = valid_name && valid_uuid;
-
-                                        let backend_handle = backend_handle.clone();
-                                        let mut add_button = Button::new("add").label(t::account::add::submit()).disabled(!valid).on_click(move |_, window, cx| {
-                                            window.close_all_dialogs(cx);
-
-                                            let uuid = if let Ok(uuid) = Uuid::try_parse(&uuid) {
-                                               uuid
-                                            } else {
-                                                let uuid: u128 = rand::thread_rng().r#gen();
-                                                let uuid = (uuid & !0xF0000000000000000000) | 0x30000000000000000000; // set version to 3
-                                                Uuid::from_u128(uuid)
-                                            };
-
-                                            backend_handle.send(MessageToBackend::AddOfflineAccount {
-                                                name: username.clone().into(),
-                                                uuid
-                                            });
-                                        });
-
-                                        if valid {
-                                            add_button = add_button.success();
-                                        }
-
-                                        dialog
-                                            .w(px(420.0))
-                                            .close_button(true)
-                                            .overlay_closable(true)
-                                            .title(t::account::add::offline())
-                                            .child(v_flex()
-                                                .gap_3()
-                                                .pt_1()
-                                                .child(crate::labelled(t::account::name(), Input::new(&name_input)))
-                                                .child(crate::labelled(t::account::uuid(), Input::new(&uuid_input)))
-                                                .child(add_button)
-                                            )
-                                    });
+                                    open_add_offline_dialog(&backend_handle, window, cx);
                                 }
                             })
                     )
@@ -485,4 +395,159 @@ impl Render for Accounts {
                 cx.notify();
             }))
     }
+}
+
+pub fn open_add_elyby_dialog(backend_handle: &BackendHandle, window: &mut Window, cx: &mut App) {
+    crate::root::capture_backdrop_blur(window, cx);
+    let name_input = cx.new(|cx| {
+        InputState::new(window, cx)
+    });
+    let backend_handle = backend_handle.clone();
+    window.open_dialog(cx, move |dialog, _, cx| {
+        let username = name_input.read(cx).value();
+        let valid_name = username.len() >= 1 && username.len() <= 16 &&
+            username.as_bytes().iter().all(|c| *c > 32 && *c < 127);
+
+        let backend_handle = backend_handle.clone();
+        let mut add_button = Button::new("add-elyby-submit").label(t::account::add::submit()).disabled(!valid_name).on_click(move |_, window, cx| {
+            window.close_all_dialogs(cx);
+
+            let uuid: u128 = rand::thread_rng().r#gen();
+            let uuid = (uuid & !0xF0000000000000000000) | 0x30000000000000000000;
+            let uuid = Uuid::from_u128(uuid);
+
+            backend_handle.send(MessageToBackend::AddElyByAccount {
+                name: username.clone().into(),
+                uuid,
+            });
+        });
+
+        if valid_name {
+            add_button = add_button.success();
+        }
+
+        dialog
+            .w(px(420.0))
+            .close_button(true)
+            .overlay_closable(true)
+            .title(t::account::add::elyby())
+            .child(v_flex()
+                .gap_3()
+                .pt_1()
+                .child(crate::labelled(t::account::name(), Input::new(&name_input)))
+                .child(add_button)
+            )
+    });
+}
+
+pub fn open_add_offline_dialog(backend_handle: &BackendHandle, window: &mut Window, cx: &mut App) {
+    crate::root::capture_backdrop_blur(window, cx);
+    let name_input = cx.new(|cx| {
+        InputState::new(window, cx)
+    });
+    let uuid_input = cx.new(|cx| {
+        InputState::new(window, cx).placeholder(t::account::uuid_random())
+    });
+    let backend_handle = backend_handle.clone();
+    window.open_dialog(cx, move |dialog, _, cx| {
+        let username = name_input.read(cx).value();
+        let valid_name = username.len() >= 1 && username.len() <= 16 &&
+            username.as_bytes().iter().all(|c| *c > 32 && *c < 127);
+        let uuid = uuid_input.read(cx).value();
+        let valid_uuid = uuid.is_empty() || Uuid::try_parse(&uuid).is_ok();
+
+        let valid = valid_name && valid_uuid;
+
+        let backend_handle = backend_handle.clone();
+        let mut add_button = Button::new("add").label(t::account::add::submit()).disabled(!valid).on_click(move |_, window, cx| {
+            window.close_all_dialogs(cx);
+
+            let uuid = if let Ok(uuid) = Uuid::try_parse(&uuid) {
+               uuid
+            } else {
+                let uuid: u128 = rand::thread_rng().r#gen();
+                let uuid = (uuid & !0xF0000000000000000000) | 0x30000000000000000000; // set version to 3
+                Uuid::from_u128(uuid)
+            };
+
+            backend_handle.send(MessageToBackend::AddOfflineAccount {
+                name: username.clone().into(),
+                uuid
+            });
+        });
+
+        if valid {
+            add_button = add_button.success();
+        }
+
+        dialog
+            .w(px(420.0))
+            .close_button(true)
+            .overlay_closable(true)
+            .title(t::account::add::offline())
+            .child(v_flex()
+                .gap_3()
+                .pt_1()
+                .child(crate::labelled(t::account::name(), Input::new(&name_input)))
+                .child(crate::labelled(t::account::uuid(), Input::new(&uuid_input)))
+                .child(add_button)
+            )
+    });
+}
+
+pub fn open_add_account_dialog(backend_handle: &BackendHandle, window: &mut Window, cx: &mut App) {
+    crate::root::capture_backdrop_blur(window, cx);
+    let bh = backend_handle.clone();
+    window.open_dialog(cx, move |dialog, _, cx| {
+        let bh1 = bh.clone();
+        let bh2 = bh.clone();
+        let bh3 = bh.clone();
+
+        dialog
+            .w(px(380.0))
+            .close_button(true)
+            .overlay_closable(true)
+            .title(t::account::add::title())
+            .child(
+                v_flex()
+                    .gap_3()
+                    .pt_2()
+                    .child(
+                        Button::new("add-microsoft-pick")
+                            .w_full()
+                            .h_10()
+                            .info()
+                            .icon(PandoraIcon::Plus)
+                            .label("Microsoft (Official)")
+                            .on_click(move |_, window, cx| {
+                                window.close_dialog(cx);
+                                crate::root::start_new_account_login(&bh1, window, cx);
+                            })
+                    )
+                    .child(
+                        Button::new("add-elyby-pick")
+                            .w_full()
+                            .h_10()
+                            .success()
+                            .icon(PandoraIcon::Plus)
+                            .label("Ely.by")
+                            .on_click(move |_, window, cx| {
+                                window.close_dialog(cx);
+                                open_add_elyby_dialog(&bh2, window, cx);
+                            })
+                    )
+                    .child(
+                        Button::new("add-offline-pick")
+                            .w_full()
+                            .h_10()
+                            .secondary()
+                            .icon(PandoraIcon::Plus)
+                            .label("Offline")
+                            .on_click(move |_, window, cx| {
+                                window.close_dialog(cx);
+                                open_add_offline_dialog(&bh3, window, cx);
+                            })
+                    )
+            )
+    });
 }

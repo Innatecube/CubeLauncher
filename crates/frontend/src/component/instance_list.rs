@@ -527,12 +527,14 @@ fn render_play_button(item: &InstanceEntry, index: usize, data: DataEntities, cx
         InstanceStatus::Launching => {
             Button::new(("launching", index))
                 .warning()
-                .label("...")
+                .icon(PandoraIcon::Loader)
+                .label(t::instance::start::starting())
         },
         InstanceStatus::Stopping => {
-            Button::new(("launching", index))
+            Button::new(("stopping", index))
                 .danger()
-                .label("...")
+                .icon(PandoraIcon::Loader)
+                .label(t::instance::start::stopping())
         },
         InstanceStatus::Running => {
             Button::new(("kill_instance", index))

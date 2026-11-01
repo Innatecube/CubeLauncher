@@ -155,7 +155,7 @@ pub fn start_new_account_login(
 
 pub fn start_instance(
     id: InstanceID,
-    name: SharedString,
+    _name: SharedString,
     quick_play: Option<QuickPlayLaunch>,
     data: &DataEntities,
     window: &mut Window,
@@ -186,8 +186,7 @@ pub fn start_instance(
         modal_action: modal_action.clone(),
     });
 
-    let title: SharedString = t::instance::start::title(&name).into();
-    modals::generic::show_modal(window, cx, title, t::instance::start::error().into(), modal_action);
+    modals::generic::watch_action_errors(window, cx, t::instance::start::error().into(), modal_action);
 
     let window_handle = window.window_handle();
     let data = data.clone();

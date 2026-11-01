@@ -2,8 +2,9 @@ use std::{collections::VecDeque, sync::Arc};
 
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme as _, InteractiveElementExt, StyledExt, WindowExt, h_flex, notification::{Notification, NotificationType}, scroll::ScrollableElement, tooltip::Tooltip, v_flex
+    ActiveTheme as _, InteractiveElementExt, StyledExt, WindowExt, button::{Button, ButtonVariants}, h_flex, notification::{Notification, NotificationType}, scroll::ScrollableElement, tooltip::Tooltip, v_flex
 };
+use bridge::message::MessageToBackend;
 use rustc_hash::FxHashMap;
 use schema::pandora_update::UpdatePrompt;
 use serde::{Deserialize, Serialize};
@@ -39,6 +40,7 @@ pub struct LauncherUI {
     pub data: DataEntities,
     pub page: LauncherPage,
     pub update: Option<UpdatePrompt>,
+    pub is_account_flyout_open: bool,
     sidebar_reorderable_state: Entity<ReorderableState>,
     page_history_backwards: VecDeque<(PageType, Arc<[PageType]>)>,
     page_history_forwards: Vec<(PageType, Arc<[PageType]>)>,
@@ -247,6 +249,7 @@ impl LauncherUI {
             data: data.clone(),
             page,
             update: None,
+            is_account_flyout_open: false,
             sidebar_reorderable_state,
             page_history_backwards: VecDeque::with_capacity(32),
             page_history_forwards: Vec::new(),
@@ -615,6 +618,194 @@ impl LauncherUI {
                     .children(task_cards)
             )
             .into_any_element()
+    }
+
+    fn render_account_flyout(&self, iconized_sidebar: bool, _window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let accounts_entity = self.data.accounts.read(cx);
+        let accounts = accounts_entity.accounts.clone();
+        let selected_uuid = accounts_entity.selected_account_uuid;
+        let hide_skins = InterfaceConfig::get(cx).hide_skins;
+        let hide_usernames = InterfaceConfig::get(cx).hide_usernames;
+        let backend_handle = self.data.backend_handle.clone();
+
+        let add_btn = {
+            let backend_handle = backend_handle.clone();
+            h_flex()
+                .id("flyout-add-account")
+                .w_full()
+                .h(px(32.0))
+                .px_3()
+                .gap_2()
+                .items_center()
+                .justify_center()
+                .rounded_none()
+                .cursor_pointer()
+                .bg(rgb(0x04242e))
+                .border_1()
+                .border_color(rgb(0x00e5ff).opacity(0.4))
+                .text_color(rgb(0x00f0ff))
+                .font_family(crate::interface_config::DEFAULT_FONT)
+                .text_size(px(12.0))
+                .hover(|this| {
+                    this.bg(rgb(0x063544))
+                        .border_color(rgb(0x00e5ff))
+                        .text_color(rgb(0x38f8ff))
+                })
+                .child(div().size(px(14.0)).text_color(rgb(0x00f0ff)).child(PandoraIcon::Plus))
+                .child("+ Add Account")
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.is_account_flyout_open = false;
+                    crate::modals::accounts::open_add_account_dialog(&backend_handle, window, cx);
+                }))
+        };
+
+        let mut account_items = Vec::new();
+        for (idx, account) in accounts.iter().enumerate() {
+            let is_selected = Some(account.uuid) == selected_uuid;
+            let account_uuid = account.uuid;
+            let account_name = account.username(hide_usernames);
+            let badge_text = if account.is_elyby {
+                "ELY.BY"
+            } else if account.offline {
+                "OFFLINE"
+            } else {
+                "MICROSOFT"
+            };
+
+            let head_img = if hide_skins {
+                gpui::img(ImageSource::Resource(Resource::Embedded("images/hidden_head.png".into())))
+            } else if let Some(head) = &account.head {
+                let resize = png_render_cache::ImageTransformation::Resize { width: 30, height: 30 };
+                png_render_cache::render_with_transform(head.clone(), resize, cx)
+            } else {
+                gpui::img(ImageSource::Resource(Resource::Embedded("images/default_head.png".into())))
+            };
+
+            let row_group: SharedString = format!("flyout-account-row-{}", idx).into();
+            let bh = backend_handle.clone();
+            let bh_del = backend_handle.clone();
+
+            let row = h_flex()
+                .id(("flyout-account", idx))
+                .group(row_group.clone())
+                .w_full()
+                .h(px(38.0))
+                .px_2()
+                .gap_2()
+                .items_center()
+                .rounded_none()
+                .cursor_pointer()
+                .when_else(is_selected, |this| {
+                    this.bg(rgb(0x04242e))
+                        .border_1()
+                        .border_color(rgb(0x00e5ff))
+                }, |this| {
+                    this.bg(gpui::transparent_black())
+                        .border_1()
+                        .border_color(gpui::transparent_black())
+                        .hover(|this| {
+                            this.bg(rgba(0xffffff0d))
+                                .border_color(rgb(0x00e5ff).opacity(0.35))
+                        })
+                })
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    if !is_selected {
+                        bh.send(MessageToBackend::SelectAccount { uuid: account_uuid });
+                    }
+                    this.is_account_flyout_open = false;
+                    cx.notify();
+                }))
+                .child(
+                    div()
+                        .size(px(30.0))
+                        .min_w(px(30.0))
+                        .min_h(px(30.0))
+                        .rounded_none()
+                        .overflow_hidden()
+                        .flex_none()
+                        .child(head_img.size(px(30.0)).min_w(px(30.0)).min_h(px(30.0)))
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .font_family(crate::interface_config::DEFAULT_FONT)
+                        .text_size(px(12.0))
+                        .text_color(if is_selected { rgb(0x00f0ff) } else { rgb(0xffffff) })
+                        .child(ShrinkingText::new(account_name))
+                )
+                .child(
+                    div()
+                        .text_size(rems(0.6875))
+                        .px_1p5()
+                        .py_0p5()
+                        .rounded_none()
+                        .bg(rgb(0x04242e))
+                        .border_1()
+                        .border_color(rgb(0x00e5ff).opacity(0.4))
+                        .text_color(rgb(0x00f0ff))
+                        .child(badge_text)
+                )
+                .child(
+                    Button::new(("del-account", idx))
+                        .invisible()
+                        .group_hover(row_group.clone(), |style| style.visible())
+                        .ghost()
+                        .compact()
+                        .icon(PandoraIcon::Trash2)
+                        .h(px(22.0))
+                        .w(px(22.0))
+                        .danger()
+                        .on_click(move |_, _, cx| {
+                            cx.stop_propagation();
+                            bh_del.send(MessageToBackend::DeleteAccount { uuid: account_uuid });
+                        })
+                );
+
+            account_items.push(row.into_any_element());
+        }
+
+        let flyout_panel = v_flex()
+            .id("account-flyout-panel")
+            .w_full()
+            .p_1p5()
+            .gap_1p5()
+            .bg(rgb(0x081014))
+            .border_1()
+            .border_color(rgb(0x00e5ff))
+            .rounded_none()
+            .shadow_2xl()
+            .on_mouse_down(MouseButton::Left, |_, window, cx| {
+                window.prevent_default();
+                cx.stop_propagation();
+            })
+            .on_mouse_down_out(cx.listener(|this, _, _, cx| {
+                this.is_account_flyout_open = false;
+                cx.notify();
+            }))
+            .child(add_btn)
+            .when(!account_items.is_empty(), |this| {
+                this.child(
+                    v_flex()
+                        .w_full()
+                        .gap_1()
+                        .max_h(px(240.0))
+                        .overflow_y_scrollbar()
+                        .children(account_items)
+                )
+            });
+
+        let mut flyout_container = div()
+            .absolute()
+            .bottom(px(46.0));
+
+        if iconized_sidebar {
+            flyout_container = flyout_container.left(px(8.0)).w(px(220.0));
+        } else {
+            flyout_container = flyout_container.left(px(8.0)).right(px(8.0));
+        }
+
+        flyout_container.child(flyout_panel).into_any_element()
     }
 }
 
@@ -1020,6 +1211,8 @@ impl Render for LauncherUI {
             .flex_none()
             .child(account_head.size(px(34.0)).min_w(px(34.0)).min_h(px(34.0)));
 
+        let is_flyout_open = self.is_account_flyout_open;
+
         let account_button = if !iconized_sidebar {
             h_flex()
                 .id("account-button")
@@ -1029,9 +1222,17 @@ impl Render for LauncherUI {
                 .items_center()
                 .rounded_none()
                 .cursor_pointer()
-                .hover(|this| {
-                    this.bg(cx.theme().sidebar_accent)
-                        .text_color(cx.theme().sidebar_accent_foreground)
+                .when_else(is_flyout_open, |this| {
+                    this.border_1()
+                        .border_color(rgb(0x00e5ff))
+                        .bg(rgb(0x04242e))
+                }, |this| {
+                    this.border_1()
+                        .border_color(gpui::transparent_black())
+                        .hover(|this| {
+                            this.bg(cx.theme().sidebar_accent)
+                                .text_color(cx.theme().sidebar_accent_foreground)
+                        })
                 })
                 .child(account_tile)
                 .child(
@@ -1056,13 +1257,10 @@ impl Render for LauncherUI {
                             )
                         })
                 )
-                .on_click({
-                    let data = self.data.clone();
-                    move |_, window, cx| {
-                        let build = crate::modals::accounts::build_accounts_sheet(&data, window, cx);
-                        window.open_sheet_at(gpui_component::Placement::Left, cx, build);
-                    }
-                })
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.is_account_flyout_open = !this.is_account_flyout_open;
+                    cx.notify();
+                }))
                 .into_any_element()
         } else {
             div()
@@ -1070,21 +1268,26 @@ impl Render for LauncherUI {
                 .p_1()
                 .rounded_none()
                 .cursor_pointer()
-                .hover(|this| {
-                    this.bg(cx.theme().sidebar_accent)
-                        .text_color(cx.theme().sidebar_accent_foreground)
+                .when_else(is_flyout_open, |this| {
+                    this.border_1()
+                        .border_color(rgb(0x00e5ff))
+                        .bg(rgb(0x04242e))
+                }, |this| {
+                    this.border_1()
+                        .border_color(gpui::transparent_black())
+                        .hover(|this| {
+                            this.bg(cx.theme().sidebar_accent)
+                                .text_color(cx.theme().sidebar_accent_foreground)
+                        })
                 })
                 .child(account_tile)
                 .tooltip(move |window, cx| {
                     Tooltip::new(account_name.clone()).build(window, cx)
                 })
-                .on_click({
-                    let data = self.data.clone();
-                    move |_, window, cx| {
-                        let build = crate::modals::accounts::build_accounts_sheet(&data, window, cx);
-                        window.open_sheet_at(gpui_component::Placement::Left, cx, build);
-                    }
-                })
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.is_account_flyout_open = !this.is_account_flyout_open;
+                    cx.notify();
+                }))
                 .into_any_element()
         };
 
@@ -1264,7 +1467,21 @@ impl Render for LauncherUI {
             .text_size(rems(0.9375))
             .child(gpui::img(ImageSource::Resource(Resource::Embedded("images/logo.png".into()))).size_8().min_w_8().min_h_8())
             .when(!iconized_sidebar, |this| this.child(t::common::app_name()));
-        let footer = v_flex().pb_2().px_2().gap_y_1().items_center().min_w_full().max_w_full().w_full().child(settings_button).child(wardrobe_button).child(account_button);
+        let footer = v_flex()
+            .pb_2()
+            .px_2()
+            .gap_y_1()
+            .items_center()
+            .min_w_full()
+            .max_w_full()
+            .w_full()
+            .relative()
+            .when(self.is_account_flyout_open, |this| {
+                this.child(self.render_account_flyout(iconized_sidebar, window, cx))
+            })
+            .child(settings_button)
+            .child(wardrobe_button)
+            .child(account_button);
         let sidebar = v_flex()
             .w(px(sidebar_width))
             .min_w(px(sidebar_width))

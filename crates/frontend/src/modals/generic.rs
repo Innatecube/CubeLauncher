@@ -74,6 +74,44 @@ pub fn show_notification_with_note(
     window.push_notification(notification, cx);
 }
 
+pub fn watch_action_errors(
+    window: &mut Window,
+    cx: &mut App,
+    error_title: SharedString,
+    modal_action: ModalAction,
+) {
+    let notify = modal_action.get_notify();
+    let modal_action_clone = modal_action.clone();
+    let error_title = error_title.clone();
+    window.spawn(cx, async move |cx| {
+        loop {
+            if let Some(error) = modal_action_clone.get_error_message() {
+                let _ = cx.update_window(cx.window_handle(), move |_, window, cx| {
+                    crate::root::capture_backdrop_blur(window, cx);
+                    window.open_dialog(cx, move |dialog, _, _cx| {
+                        let error_widget = ErrorAlert::new(error_title.clone(), error.clone().into());
+                        let dismiss = Button::new("ok")
+                            .primary()
+                            .label(t::common::ok())
+                            .on_click(|_, window, cx| window.close_dialog(cx));
+                        dialog
+                            .w(px(460.0))
+                            .close_button(true)
+                            .overlay_closable(true)
+                            .child(v_flex().gap_3().pt_1().child(error_widget))
+                            .footer(dismiss)
+                    });
+                });
+                break;
+            }
+            if modal_action_clone.refcnt() <= 1 || modal_action_clone.get_finished_at().is_some() {
+                break;
+            }
+            notify.notified().await;
+        }
+    }).detach();
+}
+
 
 
 fn render_progress_trackers(modal_action: &ModalAction, elapsed_modal: f32) -> (Vec<Div>, bool) {
