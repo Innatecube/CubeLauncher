@@ -483,7 +483,7 @@ impl ChangeVersionDialog {
 
     fn render_version_select(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let Some(items) = self.items.as_ref() else {
-            return Skeleton::new().w_full().min_h_8().max_h_8().rounded_md().into_any_element();
+            return Skeleton::new().w_full().min_h_8().max_h_8().rounded_none().into_any_element();
         };
 
         let state = if let Some(state) = self.version_select_state.clone() {
@@ -583,7 +583,7 @@ impl ChangeVersionDialog {
                     .w_full()
                     .border_1()
                     .border_color(cx.theme().border)
-                    .rounded(cx.theme().radius)
+                    .rounded_none()
                     .p_2()
                     .bg(cx.theme().background)
                     .child(body),
@@ -636,6 +636,8 @@ impl ChangeVersionDialog {
                 let updating = self.updating.clone();
                 let content_list = self.content_list.clone();
                 let filename_hash = self.filename_hash;
+                let data = self.data.clone();
+                let version_label = self.version_label.clone();
 
                 move |_, window, cx| {
                     if !is_project(&content_source) {
@@ -717,7 +719,7 @@ impl ChangeVersionDialog {
                         files: vec![install_file].into(),
                     };
 
-                    root::change_mod_version(content_install, filename_hash, &updating, &backend_handle, window, cx);
+                    root::change_mod_version(content_install, filename_hash, &updating, version_label.clone(), None, &data, window, cx);
                     content_list.update(cx, |_, cx| cx.notify());
                     window.close_dialog(cx);
                 }

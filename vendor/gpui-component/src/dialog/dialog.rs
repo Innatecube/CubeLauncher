@@ -574,7 +574,7 @@ impl RenderOnce for Dialog {
                                     .bg(cx.theme().tokens.background)
                                     .border_1()
                                     .border_color(cx.theme().border)
-                                    .rounded(cx.theme().radius_lg)
+                                    .rounded_none()
                                     .min_h_24()
                                     .pt(paddings.top)
                                     .pb(paddings.bottom)

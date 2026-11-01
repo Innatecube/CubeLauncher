@@ -92,6 +92,8 @@ pub struct InterfaceConfig {
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub hide_main_window_on_launch: bool,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
+    pub game_launch_behavior: GameLaunchBehavior,
+    #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub live_game_output_display: LiveGameOutputDisplay,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub quit_on_main_closed: bool,
@@ -126,9 +128,11 @@ pub struct InterfaceConfig {
 pub const DEFAULT_THEME: &'static str = "Default Dark";
 
 #[cfg(windows)]
-pub const DEFAULT_FONT: &'static str = "Mojangles";
-#[cfg(not(windows))]
-pub const DEFAULT_FONT: &'static str = "Mojangles";
+pub const DEFAULT_FONT: &'static str = "Minecraft NRC SmallCaps";
+#[cfg(target_os = "macos")]
+pub const DEFAULT_FONT: &'static str = "Minecraft NRC SmallCaps";
+#[cfg(not(any(windows, target_os = "macos")))]
+pub const DEFAULT_FONT: &'static str = "Minecraft NRC SmallCaps";
 
 pub const DEFAULT_FONT_SIZE: i32 = 16;
 
@@ -177,11 +181,217 @@ impl InterfaceConfig {
 
             theme.apply_config(&theme_config);
 
-            theme.font_family = holder.config.font_family.clone().unwrap_or(SharedString::new_static(DEFAULT_FONT));
+            if holder.config.active_theme.is_none() {
+                // NoRisk Dark Teal & Neon Cyan Theme Palette
+                let dark_bg: gpui::Hsla = gpui::rgb(0x061818).into();        // Dark teal void — signature NoRisk background
+                let dark_sidebar: gpui::Hsla = gpui::rgb(0x040e0e).into();   // Deep teal-black sidebar
+                let dark_card: gpui::Hsla = gpui::rgb(0x0b1e1e).into();      // Elevated teal card surface
+                let dark_card_hover: gpui::Hsla = gpui::rgb(0x0f2828).into();// Hover card surface
+                let dark_border: gpui::Hsla = gpui::rgb(0x163232).into();    // Teal razor border
+                let text_main: gpui::Hsla = gpui::rgb(0xffffff).into();      // Crisp pure white text
+                let text_muted: gpui::Hsla = gpui::rgb(0x7e8c9f).into();     // Tech slate muted text
+                let white: gpui::Hsla = gpui::rgb(0xffffff).into();
+
+                // Uniform Cyan Family Palette
+                let cyan_electric: gpui::Hsla = gpui::rgb(0x00f0ff).into();  // Brightest highlight, glowing borders, active text/icons
+                let cyan_vibrant: gpui::Hsla = gpui::rgb(0x00e5ff).into();   // Primary interactive cyan, switch checked, checkboxes, radio, tabs, rings
+                let cyan_button: gpui::Hsla = gpui::rgb(0x00b8d4).into();    // Rich cyan for primary/success action buttons
+                let cyan_button_hover: gpui::Hsla = gpui::rgb(0x00e5ff).into(); // Hover state for primary buttons (luminous glow)
+                let cyan_button_active: gpui::Hsla = gpui::rgb(0x009cb2).into(); // Pressed state for primary buttons
+                let cyan_deep: gpui::Hsla = gpui::rgb(0x031a15).into();      // Deep teal container background for active pills, play button, badges
+                let cyan_deep_hover: gpui::Hsla = gpui::rgb(0x062b22).into(); // Deep teal hover
+                let cyan_deep_active: gpui::Hsla = gpui::rgb(0x02130f).into(); // Deep teal active
+
+                theme.background = dark_bg;
+                theme.sidebar = dark_sidebar;
+                theme.sidebar_accent = cyan_deep;
+                theme.sidebar_accent_foreground = cyan_electric;
+                theme.sidebar_border = dark_border;
+                theme.sidebar_foreground = text_main;
+                theme.border = dark_border;
+                theme.popover = dark_card;
+                theme.popover_foreground = text_main;
+                theme.group_box = dark_card;
+                theme.group_box_foreground = text_main;
+                theme.tiles = dark_card;
+                theme.secondary = dark_card;
+                theme.secondary_hover = dark_card_hover;
+                theme.secondary_foreground = text_main;
+                theme.accent = cyan_deep;
+                theme.accent_foreground = cyan_electric;
+                theme.foreground = text_main;
+                theme.muted_foreground = text_muted;
+
+                // Main theme colors: Uniform Cyan Family
+                theme.primary = cyan_vibrant;
+                theme.primary_hover = cyan_electric;
+                theme.primary_active = cyan_button_active;
+                theme.primary_foreground = white;
+                theme.tokens.primary = cyan_vibrant.into();
+                theme.tokens.primary_hover = cyan_electric.into();
+                theme.tokens.primary_active = cyan_button_active.into();
+                theme.tokens.primary_foreground = white.into();
+
+                // Default & Secondary Buttons: Subtle elevated teal cards with crisp white text
+                theme.button = dark_card;
+                theme.button_foreground = text_main;
+                theme.button_hover = dark_card_hover;
+                theme.button_active = dark_border;
+                theme.tokens.button = dark_card.into();
+                theme.tokens.button_foreground = text_main.into();
+                theme.tokens.button_hover = dark_card_hover.into();
+                theme.tokens.button_active = dark_border.into();
+
+                theme.button_secondary = dark_card;
+                theme.button_secondary_foreground = text_main;
+                theme.button_secondary_hover = dark_card_hover;
+                theme.button_secondary_active = dark_border;
+                theme.tokens.button_secondary = dark_card.into();
+                theme.tokens.button_secondary_foreground = text_main.into();
+                theme.tokens.button_secondary_hover = dark_card_hover.into();
+                theme.tokens.button_secondary_active = dark_border.into();
+
+                // Primary & Success Action Buttons: Vibrant Rich Cyan with pure white text
+                theme.button_primary = cyan_button;
+                theme.button_primary_foreground = white;
+                theme.button_primary_hover = cyan_button_hover;
+                theme.button_primary_active = cyan_button_active;
+                theme.tokens.button_primary = cyan_button.into();
+                theme.tokens.button_primary_foreground = white.into();
+                theme.tokens.button_primary_hover = cyan_button_hover.into();
+                theme.tokens.button_primary_active = cyan_button_active.into();
+
+                theme.success = cyan_button;
+                theme.success_hover = cyan_button_hover;
+                theme.button_success = cyan_button;
+                theme.button_success_foreground = white;
+                theme.button_success_hover = cyan_button_hover;
+                theme.button_success_active = cyan_button_active;
+                theme.tokens.button_success = cyan_button.into();
+                theme.tokens.button_success_foreground = white.into();
+                theme.tokens.button_success_hover = cyan_button_hover.into();
+                theme.tokens.button_success_active = cyan_button_active.into();
+
+                // Info Action Buttons: Deep teal container with electric cyan text
+                theme.info = cyan_electric;
+                theme.info_hover = cyan_vibrant;
+                theme.info_foreground = white;
+                theme.button_info = cyan_deep;
+                theme.button_info_foreground = cyan_electric;
+                theme.button_info_hover = cyan_deep_hover;
+                theme.button_info_active = cyan_deep_active;
+                theme.tokens.button_info = cyan_deep.into();
+                theme.tokens.button_info_foreground = cyan_electric.into();
+                theme.tokens.button_info_hover = cyan_deep_hover.into();
+                theme.tokens.button_info_active = cyan_deep_active.into();
+
+                // Danger Buttons: Vivid Red with pure white text
+                let danger_red: gpui::Hsla = gpui::rgb(0xd32f2f).into();
+                let danger_red_hover: gpui::Hsla = gpui::rgb(0xf44336).into();
+                let danger_red_active: gpui::Hsla = gpui::rgb(0xb71c1c).into();
+                theme.danger = danger_red;
+                theme.danger_hover = danger_red_hover;
+                theme.danger_active = danger_red_active;
+                theme.danger_foreground = white;
+                theme.button_danger = danger_red;
+                theme.button_danger_foreground = white;
+                theme.button_danger_hover = danger_red_hover;
+                theme.button_danger_active = danger_red_active;
+                theme.tokens.button_danger = danger_red.into();
+                theme.tokens.button_danger_foreground = white.into();
+                theme.tokens.button_danger_hover = danger_red_hover.into();
+                theme.tokens.button_danger_active = danger_red_active.into();
+
+                // Warning Buttons: Amber with pure white text
+                let warning_amber: gpui::Hsla = gpui::rgb(0xf59e0b).into();
+                let warning_amber_hover: gpui::Hsla = gpui::rgb(0xfbbf24).into();
+                let warning_amber_active: gpui::Hsla = gpui::rgb(0xd97706).into();
+                theme.warning = warning_amber;
+                theme.warning_hover = warning_amber_hover;
+                theme.warning_active = warning_amber_active;
+                theme.warning_foreground = white;
+                theme.button_warning = warning_amber;
+                theme.button_warning_foreground = white;
+                theme.button_warning_hover = warning_amber_hover;
+                theme.button_warning_active = warning_amber_active;
+                theme.tokens.button_warning = warning_amber.into();
+                theme.tokens.button_warning_foreground = white.into();
+                theme.tokens.button_warning_hover = warning_amber_hover.into();
+                theme.tokens.button_warning_active = warning_amber_active.into();
+
+                // Focus rings, active tabs, selections & sliders
+                theme.ring = cyan_electric;
+                theme.tokens.ring = cyan_electric.into();
+                theme.sidebar_primary = cyan_vibrant;
+                theme.sidebar_primary_foreground = white;
+                theme.tab_active = cyan_vibrant;
+                theme.tab_active_foreground = cyan_electric;
+                theme.tokens.tab_active = cyan_vibrant.into();
+                theme.tokens.tab_active_foreground = cyan_electric.into();
+                theme.progress_bar = cyan_vibrant;
+                theme.tokens.progress_bar = cyan_vibrant.into();
+                theme.slider_bar = cyan_deep;
+                theme.slider_thumb = cyan_electric;
+                theme.tokens.slider_bar = cyan_deep.into();
+                theme.tokens.slider_thumb = cyan_electric.into();
+                theme.selection = cyan_vibrant.opacity(0.35);
+                theme.tokens.selection = cyan_vibrant.opacity(0.35).into();
+                theme.drag_border = cyan_electric;
+                theme.drop_target = cyan_vibrant.opacity(0.15);
+
+                // Scrollbars
+                theme.scrollbar = dark_sidebar.opacity(0.0);
+                theme.scrollbar_thumb = cyan_vibrant.opacity(0.20);
+                theme.scrollbar_thumb_hover = cyan_electric.opacity(0.70);
+                theme.tokens.scrollbar_thumb = cyan_vibrant.opacity(0.20).into();
+                theme.tokens.scrollbar_thumb_hover = cyan_electric.opacity(0.70).into();
+
+                // Links & Lists
+                theme.tokens.link = cyan_vibrant.into();
+                theme.tokens.link_active = cyan_electric.into();
+                theme.tokens.link_hover = cyan_electric.into();
+                theme.tokens.list_active = cyan_vibrant.opacity(0.20).into();
+                theme.tokens.list_active_border = cyan_electric.into();
+                theme.tokens.switch_thumb = white.into();
+                let switch_bg: gpui::Hsla = gpui::rgb(0x182030).into();
+                theme.tokens.switch = switch_bg.into();
+
+                theme.title_bar = dark_sidebar;
+                theme.title_bar_border = dark_border;
+                theme.status_bar = dark_sidebar;
+                theme.status_bar_border = dark_border;
+                theme.radius = gpui::px(0.0);
+                theme.radius_lg = gpui::px(0.0);
+                theme.overlay = gpui::rgba(0x020808e0).into();
+            }
+
+            theme.radius = gpui::px(0.0);
+            theme.radius_lg = gpui::px(0.0);
+            theme.font_family = holder.config.font_family.clone().unwrap_or_else(|| SharedString::new_static(DEFAULT_FONT));
             theme.font_size = gpui::px(holder.config.font_size.unwrap_or(DEFAULT_FONT_SIZE).clamp(8, 32) as f32);
             theme.scrollbar_mode = gpui_component::scroll::ScrollbarMode::Always;
         });
+        gpui_component::Theme::sync_base(cx);
         cx.refresh_windows();
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, strum::EnumIter)]
+#[serde(rename_all = "lowercase")]
+pub enum GameLaunchBehavior {
+    #[default]
+    KeepOpen,
+    HideToTray,
+    CloseLauncher,
+}
+
+impl GameLaunchBehavior {
+    pub fn name(self) -> &'static str {
+        match self {
+            GameLaunchBehavior::KeepOpen => "Keep launcher open",
+            GameLaunchBehavior::HideToTray => "Minimize / Hide to tray",
+            GameLaunchBehavior::CloseLauncher => "Close launcher completely",
+        }
     }
 }
 
@@ -291,6 +501,7 @@ impl Default for InterfaceConfig {
             modrinth_page_project_type: default_modrinth_project_type(),
             curseforge_page_class_id: default_curseforge_class_id(),
             hide_main_window_on_launch: false,
+            game_launch_behavior: GameLaunchBehavior::default(),
             live_game_output_display: LiveGameOutputDisplay::default(),
             quit_on_main_closed: false,
             use_os_titlebar: false,

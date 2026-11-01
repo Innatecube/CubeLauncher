@@ -5,13 +5,15 @@ use image::{Frame, RgbaImage as SkinImage};
 use rustc_hash::FxHashMap;
 use schema::{minecraft_profile::SkinVariant, unique_bytes::UniqueBytes};
 
-const THUMB_YAW: f64 = 22.5;
-const THUMB_PITCH: f64 = -8.0;
+const THUMB_YAW: f64 = 20.0;
+const THUMB_PITCH: f64 = -3.5;
 const THUMB_ANIMATION: f64 = 3.0/16.0;
-const THUMB_Y_OFFSET: f64 = 6.0;
-const THUMB_ZOOM: f64 = 1.4;
-pub const THUMB_WIDTH: u32 = 128;
-pub const THUMB_HEIGHT: u32 = 128;
+const THUMB_Y_OFFSET: f64 = -0.6;
+const THUMB_ZOOM: f64 = 0.94;
+pub const THUMB_WIDTH: u32 = 272;
+pub const THUMB_HEIGHT: u32 = 340;
+pub const DISPLAY_THUMB_WIDTH: f32 = 136.0;
+pub const DISPLAY_THUMB_HEIGHT: f32 = 170.0;
 
 const MAX_CACHE_SIZE: usize = 256;
 

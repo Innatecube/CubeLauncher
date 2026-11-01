@@ -61,15 +61,15 @@ pub(super) fn create_page(data: &DataEntities, window: &mut Window, cx: &mut App
                 title: Some(t::settings::appearance::window),
                 items: vec![
                     SettingItem {
-                        title: t::settings::appearance::window::use_os_titlebar,
-                        description: t::settings::appearance::window::use_os_titlebar_desc,
-                        widget: SettingItemWidget::Switch(|cfg| cfg.use_os_titlebar, |cfg, val| cfg.use_os_titlebar = val),
+                        title: || "On Game Launch",
+                        description: || "Minimize to tray or close the launcher when Minecraft starts to eliminate background CPU and memory usage",
+                        widget: create_game_launch_behavior_dropdown(window, cx),
                         ..Default::default()
                     },
                     SettingItem {
-                        title: t::settings::appearance::window::hide_main_window,
-                        description: t::settings::appearance::window::hide_main_window_desc,
-                        widget: SettingItemWidget::Switch(|cfg| cfg.hide_main_window_on_launch, |cfg, val| cfg.hide_main_window_on_launch = val),
+                        title: t::settings::appearance::window::use_os_titlebar,
+                        description: t::settings::appearance::window::use_os_titlebar_desc,
+                        widget: SettingItemWidget::Switch(|cfg| cfg.use_os_titlebar, |cfg, val| cfg.use_os_titlebar = val),
                         ..Default::default()
                     },
                     SettingItem {
@@ -213,5 +213,47 @@ fn create_sidebar_mode_dropdown(window: &mut Window, cx: &mut App) -> SettingIte
 
     SettingItemWidget::Any(Rc::new(move |_, _| {
         Select::new(&dropdown).menu_width(px(200.0)).into_any_element()
+    }))
+}
+
+fn create_game_launch_behavior_dropdown(window: &mut Window, cx: &mut App) -> SettingItemWidget {
+    let behaviors = vec![
+        NamedDropdownItem {
+            name: DropdownName::Literal("Keep launcher open".into()),
+            item: crate::interface_config::GameLaunchBehavior::KeepOpen,
+        },
+        NamedDropdownItem {
+            name: DropdownName::Literal("Minimize / Hide to tray".into()),
+            item: crate::interface_config::GameLaunchBehavior::HideToTray,
+        },
+        NamedDropdownItem {
+            name: DropdownName::Literal("Close launcher completely".into()),
+            item: crate::interface_config::GameLaunchBehavior::CloseLauncher,
+        },
+    ];
+
+    let initial = {
+        let cfg = InterfaceConfig::get(cx);
+        if cfg.hide_main_window_on_launch && cfg.game_launch_behavior == crate::interface_config::GameLaunchBehavior::KeepOpen {
+            crate::interface_config::GameLaunchBehavior::HideToTray
+        } else {
+            cfg.game_launch_behavior
+        }
+    };
+
+    let dropdown = SearchableNamedDropdown::create_and_select(behaviors, initial, window, cx);
+
+    cx.subscribe(&dropdown, |_, event: &SelectEvent<_>, cx| {
+        let SelectEvent::Confirm(Some(behavior)) = event else {
+            return;
+        };
+        let cfg = InterfaceConfig::get_mut(cx);
+        cfg.game_launch_behavior = *behavior;
+        cfg.hide_main_window_on_launch = *behavior == crate::interface_config::GameLaunchBehavior::HideToTray;
+        cx.refresh_windows();
+    }).detach();
+
+    SettingItemWidget::Any(Rc::new(move |_, _| {
+        Select::new(&dropdown).menu_width(px(220.0)).into_any_element()
     }))
 }

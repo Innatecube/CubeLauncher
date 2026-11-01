@@ -151,7 +151,7 @@ impl RenderOnce for Toggle {
         let checked = self.checked;
         let disabled = self.disabled;
         let hoverable = !disabled && !checked;
-        let rounding = cx.theme().radius;
+        let rounding = gpui::px(0.);
         let pressed_background = cx.theme().tokens.accent;
         let pressed_foreground = cx.theme().accent_foreground;
         let instance_style = self.style.clone();

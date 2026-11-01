@@ -16,6 +16,7 @@ const ACCOUNT_HEIGHT: f32 = 56.0;
 const ACCOUNT_GAP: f32 = 8.0;
 const ACCOUNT_STRIDE: f32 = ACCOUNT_HEIGHT + ACCOUNT_GAP;
 
+#[allow(dead_code)]
 struct AccountDragInfo {
     index: usize,
     name: SharedString,
@@ -44,11 +45,13 @@ struct AnimateMove {
     to: usize,
 }
 
+#[allow(dead_code)]
 struct AccountDragPreview {
     name: SharedString,
     head: Option<UniqueBytes>,
     hide_skins: bool,
     badge_text: &'static str,
+    start_x: f32,
 }
 
 impl Render for AccountDragPreview {
@@ -79,22 +82,12 @@ impl Render for AccountDragPreview {
                     .px_3()
                     .gap_3()
                     .items_center()
-                    .rounded(cx.theme().radius)
+                    .rounded_none()
                     .border_1()
                     .border_color(cx.theme().border)
                     .bg(cx.theme().popover)
                     .shadow_xl()
                     .opacity(0.96)
-                    .child(
-                        div()
-                            .size_6()
-                            .min_w_6()
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(PandoraIcon::GripVertical)
-                    )
                     .child(head.size_8().min_w_8().min_h_8())
                     .child(
                         h_flex()
@@ -114,7 +107,7 @@ impl Render for AccountDragPreview {
                                     .text_size(rems(0.6875))
                                     .px_1p5()
                                     .py_0p5()
-                                    .rounded_sm()
+                                    .rounded_none()
                                     .bg(cx.theme().accent.opacity(0.3))
                                     .text_color(badge_color)
                                     .child(self.badge_text)
@@ -202,17 +195,6 @@ impl Render for Accounts {
                 ("Microsoft", cx.theme().accent_foreground)
             };
 
-            let drag_info = AccountDragInfo {
-                index: account_index,
-                name: account_name.clone(),
-                head: account.head.clone(),
-                hide_skins,
-                badge_text,
-                start_y,
-                backend_handle: self.backend_handle.clone(),
-                delta: AtomicIsize::new(0),
-            };
-
             let row_bg = if selected {
                 cx.theme().info.opacity(0.2)
             } else {
@@ -271,12 +253,12 @@ impl Render for Accounts {
                 .top(px(new_shift_amount + shift_offset))
                 .px_3()
                 .gap_3()
-                .rounded(cx.theme().radius)
+                .rounded_none()
                 .border_1()
-                .border_color(row_border)
+                .border_color(if selected { cx.theme().info.opacity(0.7) } else { row_border })
                 .bg(row_bg)
                 .text_size(rems(0.9375))
-                .line_height(rems(1.0))
+                .line_height(relative(1.25))
                 .hover(|style| style.bg(hover_bg))
                 .when(!selected, |this| {
                     this.on_click({
@@ -286,27 +268,6 @@ impl Render for Accounts {
                         }
                     })
                 })
-                .child(
-                    div()
-                        .id(("account-drag", account_index))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .size_6()
-                        .min_w_6()
-                        .text_color(cx.theme().muted_foreground)
-                        .hover(|style| style.text_color(cx.theme().foreground))
-                        .child(PandoraIcon::GripVertical)
-                        .cursor_grab()
-                        .on_drag(drag_info, move |info: &AccountDragInfo, _, _, cx| {
-                            cx.new(|_| AccountDragPreview {
-                                name: info.name.clone(),
-                                head: info.head.clone(),
-                                hide_skins: info.hide_skins,
-                                badge_text: info.badge_text,
-                            })
-                        }),
-                )
                 .child(head.size_8().min_w_8().min_h_8())
                 .child(
                     h_flex()
@@ -314,14 +275,21 @@ impl Render for Accounts {
                         .flex_1()
                         .gap_2()
                         .items_center()
-                        .child(div().text_color(if selected { cx.theme().info } else { cx.theme().foreground }).child(ShrinkingText::new(account_name.clone())))
+                        .child(div().font_semibold().text_color(if selected { cx.theme().info } else { cx.theme().foreground }).child(ShrinkingText::new(account_name.clone())))
                         .child(
                             div()
                                 .text_size(rems(0.6875))
+                                .font_semibold()
                                 .px_1p5()
                                 .py_0p5()
-                                .rounded_sm()
-                                .bg(cx.theme().accent.opacity(0.3))
+                                .rounded_none()
+                                .bg(if badge_text == "Ely.by" {
+                                    cx.theme().info.opacity(0.18)
+                                } else if badge_text == "Microsoft" {
+                                    gpui::rgb(0x2563eb).opacity(0.2).into()
+                                } else {
+                                    cx.theme().accent.opacity(0.3)
+                                })
                                 .text_color(badge_color)
                                 .child(badge_text)
                         )
@@ -357,7 +325,7 @@ impl Render for Accounts {
                         Button::new("add-account")
                             .flex_1()
                             .h_9()
-                            .success()
+                            .info()
                             .icon(PandoraIcon::Plus)
                             .label("Microsoft")
                             .on_click({
@@ -371,12 +339,13 @@ impl Render for Accounts {
                         Button::new("add-elyby")
                             .flex_1()
                             .h_9()
-                            .info()
+                            .success()
                             .icon(PandoraIcon::Plus)
                             .label("Ely.by")
                             .on_click({
                                 let backend_handle = self.backend_handle.clone();
                                 move |_, window, cx| {
+                                    crate::root::capture_backdrop_blur(window, cx);
                                     let name_input = cx.new(|cx| {
                                         InputState::new(window, cx)
                                     });
@@ -404,9 +373,14 @@ impl Render for Accounts {
                                             add_button = add_button.success();
                                         }
 
-                                        dialog.title(t::account::add::elyby())
+                                        dialog
+                                            .w(px(420.0))
+                                            .close_button(true)
+                                            .overlay_closable(true)
+                                            .title(t::account::add::elyby())
                                             .child(v_flex()
-                                                .gap_2()
+                                                .gap_3()
+                                                .pt_1()
                                                 .child(crate::labelled(t::account::name(), Input::new(&name_input)))
                                                 .child(add_button)
                                             )
@@ -425,6 +399,7 @@ impl Render for Accounts {
                             .on_click({
                                 let backend_handle = self.backend_handle.clone();
                                 move |_, window, cx| {
+                                    crate::root::capture_backdrop_blur(window, cx);
                                     let name_input = cx.new(|cx| {
                                         InputState::new(window, cx)
                                     });
@@ -463,9 +438,14 @@ impl Render for Accounts {
                                             add_button = add_button.success();
                                         }
 
-                                        dialog.title(t::account::add::offline())
+                                        dialog
+                                            .w(px(420.0))
+                                            .close_button(true)
+                                            .overlay_closable(true)
+                                            .title(t::account::add::offline())
                                             .child(v_flex()
-                                                .gap_2()
+                                                .gap_3()
+                                                .pt_1()
                                                 .child(crate::labelled(t::account::name(), Input::new(&name_input)))
                                                 .child(crate::labelled(t::account::uuid(), Input::new(&uuid_input)))
                                                 .child(add_button)

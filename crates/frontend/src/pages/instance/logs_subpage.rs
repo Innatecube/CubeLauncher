@@ -167,7 +167,7 @@ impl Render for InstanceLogsSubpage {
         let mut content = div()
             .size_full()
             .border_1()
-            .rounded(theme.radius)
+            .rounded_none()
             .border_color(theme.border);
 
         if self.no_available_logs {

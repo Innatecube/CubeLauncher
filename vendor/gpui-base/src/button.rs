@@ -225,7 +225,7 @@ impl RenderOnce for Button {
             // button cannot be sized precisely. `relative(1.)` makes the text
             // box exactly the font size; anything the caller sets refines over
             // it, so a product that wants looser text still can.
-            .line_height(relative(1.))
+            .line_height(relative(1.25))
             .when_some(self.role.resolve(|| Role::Button), |this, role| {
                 this.role(role)
             })

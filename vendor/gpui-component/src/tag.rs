@@ -248,6 +248,8 @@ impl RenderOnce for Tag {
             .into(),
         );
 
+        let _ = rounded;
+
         div()
             .flex()
             .items_center()
@@ -261,7 +263,7 @@ impl RenderOnce for Tag {
             .bg(bg)
             .text_color(fg)
             .border_color(border)
-            .rounded(rounded)
+            .rounded_none()
             .hover(|this| this.opacity(0.9))
             .refine_style(&self.style)
             .children(self.children)

@@ -2,7 +2,7 @@ use gpui::{
     AnyElement, App, IntoElement, ParentElement, RenderOnce, StyleRefinement, Styled, Window,
 };
 
-use crate::{ActiveTheme as _, StyledExt as _, v_flex};
+use crate::{StyledExt as _, v_flex};
 
 /// Content container for a dialog.
 #[derive(IntoElement)]
@@ -33,11 +33,11 @@ impl Styled for DialogContent {
 }
 
 impl RenderOnce for DialogContent {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, _: &mut Window, _cx: &mut App) -> impl IntoElement {
         v_flex()
             .w_full()
             .flex_1()
-            .rounded(cx.theme().radius_lg)
+            .rounded_none()
             .refine_style(&self.style)
             .children(self.children)
     }

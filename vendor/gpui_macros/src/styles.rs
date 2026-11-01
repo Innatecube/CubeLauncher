@@ -671,25 +671,45 @@ fn generate_custom_value_setter(
 ) -> TokenStream2 {
     let method_name = format_ident!("{}", prefix);
 
-    let mut iter = fields.iter();
-    let last = iter.next_back().unwrap();
-    let field_assignments = iter
-        .map(|field_tokens| {
-            quote! {
-                style.#field_tokens = Some(length.clone().into());
-            }
-        })
-        .chain(std::iter::once(quote! {
-            style.#last = Some(length.into());
-        }))
-        .collect::<Vec<_>>();
+    let is_rounded = prefix.starts_with("rounded");
 
-    let method = quote! {
-        #[doc = #doc_string]
-        #visibility fn #method_name(mut self, length: impl std::clone::Clone + Into<gpui::#length_type>) -> Self {
-            let style = self.style();
-            #(#field_assignments)*
-            self
+    let method = if is_rounded {
+        let field_assignments = fields.iter().map(|field_tokens| {
+            quote! {
+                style.#field_tokens = Some(gpui::px(0.).into());
+            }
+        }).collect::<Vec<_>>();
+
+        quote! {
+            #[doc = #doc_string]
+            #visibility fn #method_name(mut self, length: impl std::clone::Clone + Into<gpui::#length_type>) -> Self {
+                let _ = length;
+                let style = self.style();
+                #(#field_assignments)*
+                self
+            }
+        }
+    } else {
+        let mut iter = fields.iter();
+        let last = iter.next_back().unwrap();
+        let field_assignments = iter
+            .map(|field_tokens| {
+                quote! {
+                    style.#field_tokens = Some(length.clone().into());
+                }
+            })
+            .chain(std::iter::once(quote! {
+                style.#last = Some(length.into());
+            }))
+            .collect::<Vec<_>>();
+
+        quote! {
+            #[doc = #doc_string]
+            #visibility fn #method_name(mut self, length: impl std::clone::Clone + Into<gpui::#length_type>) -> Self {
+                let style = self.style();
+                #(#field_assignments)*
+                self
+            }
         }
     };
 
@@ -1234,43 +1254,43 @@ fn corner_suffixes() -> Vec<CornerStyleSuffix> {
         },
         CornerStyleSuffix {
             suffix: "xs",
-            radius_tokens: quote! { rems(0.125) },
-            doc_string_suffix: "2px (0.125rem)",
+            radius_tokens: quote! { px(0.) },
+            doc_string_suffix: "0px",
         },
         CornerStyleSuffix {
             suffix: "sm",
-            radius_tokens: quote! { rems(0.25) },
-            doc_string_suffix: "4px (0.25rem)",
+            radius_tokens: quote! { px(0.) },
+            doc_string_suffix: "0px",
         },
         CornerStyleSuffix {
             suffix: "md",
-            radius_tokens: quote! { rems(0.375) },
-            doc_string_suffix: "6px (0.375rem)",
+            radius_tokens: quote! { px(0.) },
+            doc_string_suffix: "0px",
         },
         CornerStyleSuffix {
             suffix: "lg",
-            radius_tokens: quote! { rems(0.5) },
-            doc_string_suffix: "8px (0.5rem)",
+            radius_tokens: quote! { px(0.) },
+            doc_string_suffix: "0px",
         },
         CornerStyleSuffix {
             suffix: "xl",
-            radius_tokens: quote! { rems(0.75) },
-            doc_string_suffix: "12px (0.75rem)",
+            radius_tokens: quote! { px(0.) },
+            doc_string_suffix: "0px",
         },
         CornerStyleSuffix {
             suffix: "2xl",
-            radius_tokens: quote! { rems(1.) },
-            doc_string_suffix: "16px (1rem)",
+            radius_tokens: quote! { px(0.) },
+            doc_string_suffix: "0px",
         },
         CornerStyleSuffix {
             suffix: "3xl",
-            radius_tokens: quote! { rems(1.5) },
-            doc_string_suffix: "24px (1.5rem)",
+            radius_tokens: quote! { px(0.) },
+            doc_string_suffix: "0px",
         },
         CornerStyleSuffix {
             suffix: "full",
-            radius_tokens: quote! {  px(9999.) },
-            doc_string_suffix: "9999px",
+            radius_tokens: quote! { px(0.) },
+            doc_string_suffix: "0px",
         },
     ]
 }

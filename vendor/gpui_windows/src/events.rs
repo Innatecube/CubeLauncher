@@ -98,7 +98,7 @@ impl WindowsWindowInner {
             WM_CREATE => self.handle_create_msg(handle),
             WM_MOVE => self.handle_move_msg(handle, lparam),
             WM_SIZE => self.handle_size_msg(wparam, lparam),
-            WM_GETMINMAXINFO => self.handle_get_min_max_info_msg(lparam),
+            WM_GETMINMAXINFO => self.handle_get_min_max_info_msg(handle, lparam),
             WM_ENTERSIZEMOVE | WM_ENTERMENULOOP => self.handle_size_move_loop(handle),
             WM_EXITSIZEMOVE | WM_EXITMENULOOP => self.handle_size_move_loop_exit(handle),
             WM_TIMER => self.handle_timer_msg(handle, wparam),
@@ -221,17 +221,32 @@ impl WindowsWindowInner {
         Some(0)
     }
 
-    fn handle_get_min_max_info_msg(&self, lparam: LPARAM) -> Option<isize> {
-        let min_size = self.state.min_size?;
-        let scale_factor = self.state.scale_factor.get();
-        let boarder_offset = &self.state.border_offset;
-
+    fn handle_get_min_max_info_msg(&self, handle: HWND, lparam: LPARAM) -> Option<isize> {
         unsafe {
             let minmax_info = &mut *(lparam.0 as *mut MINMAXINFO);
-            minmax_info.ptMinTrackSize.x = min_size.width.scale(scale_factor).as_f32() as i32
-                + boarder_offset.width_offset.get();
-            minmax_info.ptMinTrackSize.y = min_size.height.scale(scale_factor).as_f32() as i32
-                + boarder_offset.height_offset.get();
+
+            if let Some(min_size) = self.state.min_size {
+                let scale_factor = self.state.scale_factor.get();
+                let boarder_offset = &self.state.border_offset;
+                minmax_info.ptMinTrackSize.x = min_size.width.scale(scale_factor).as_f32() as i32
+                    + boarder_offset.width_offset.get();
+                minmax_info.ptMinTrackSize.y = min_size.height.scale(scale_factor).as_f32() as i32
+                    + boarder_offset.height_offset.get();
+            }
+
+            if self.hide_title_bar && !self.state.is_fullscreen() {
+                let monitor = MonitorFromWindow(handle, MONITOR_DEFAULTTONEAREST);
+                let mut monitor_info: MONITORINFO = std::mem::zeroed();
+                monitor_info.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
+                if GetMonitorInfoW(monitor, &mut monitor_info).as_bool() {
+                    let rc_work = monitor_info.rcWork;
+                    let rc_monitor = monitor_info.rcMonitor;
+                    minmax_info.ptMaxPosition.x = rc_work.left - rc_monitor.left;
+                    minmax_info.ptMaxPosition.y = rc_work.top - rc_monitor.top;
+                    minmax_info.ptMaxSize.x = rc_work.right - rc_work.left;
+                    minmax_info.ptMaxSize.y = rc_work.bottom - rc_work.top;
+                }
+            }
         }
         Some(0)
     }
@@ -785,13 +800,18 @@ impl WindowsWindowInner {
 
         unsafe {
             let params = lparam.0 as *mut NCCALCSIZE_PARAMS;
+            if IsZoomed(handle).as_bool() {
+                let monitor = MonitorFromWindow(handle, MONITOR_DEFAULTTONEAREST);
+                let mut mi: MONITORINFO = std::mem::zeroed();
+                mi.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
+                if GetMonitorInfoW(monitor, &mut mi).as_bool() {
+                    (*params).rgrc[0] = mi.rcWork;
+                    return Some(0);
+                }
+            }
             let saved_top = (*params).rgrc[0].top;
             let result = DefWindowProcW(handle, WM_NCCALCSIZE, wparam, lparam);
             (*params).rgrc[0].top = saved_top;
-            if self.state.is_maximized() {
-                let dpi = GetDpiForWindow(handle);
-                (*params).rgrc[0].top += get_frame_thicknessx(dpi);
-            }
             Some(result.0 as isize)
         }
     }

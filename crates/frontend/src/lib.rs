@@ -34,6 +34,7 @@ pub mod root;
 pub mod settings;
 pub mod skin_renderer;
 pub mod skin_thumbnail_cache;
+pub mod splash;
 pub mod ui;
 
 #[derive(rust_embed::RustEmbed)]
@@ -76,6 +77,7 @@ pub fn start(
     gpui_platform::application().with_http_client(http_client).with_assets(Assets).run(move |cx: &mut App| {
         let mut fonts = Vec::new();
         for path in [
+            "fonts/smallcaps.ttf",
             "fonts/inter/Inter-Regular.ttf",
             "fonts/roboto-mono/RobotoMono-Regular.ttf",
             "fonts/minecraft.ttf",
@@ -133,6 +135,15 @@ pub fn start(
                         }
                     }
 
+                    let has_splash = windows.iter().any(|window| {
+                        window.read(cx, |window: Entity<Root>, cx| {
+                            window.read(cx).view().clone().downcast::<crate::splash::SplashScreen>().is_ok()
+                        }).unwrap_or(false)
+                    });
+                    if has_splash {
+                        return;
+                    }
+
                     for window in &windows {
                         _ = window.update(cx, |_, window, _| {
                             window.remove_window();
@@ -166,11 +177,13 @@ pub fn start(
         });
         let metadata = cx.new(|_| FrontendMetadata::new(backend_handle.clone()));
         let accounts = cx.new(|_| AccountEntries::default());
+        let tasks = cx.new(|cx| crate::entity::task_manager::TaskManager::new(cx));
         let data = DataEntities {
             instances,
             metadata,
             backend_handle,
             accounts,
+            tasks,
             theme_folder: theme_folder.into(),
             panic_messages: Arc::new(PanicMessages {
                 panic_message,
@@ -178,17 +191,23 @@ pub fn start(
             })
         };
 
-        let mut processor = Processor::new(data.clone(), main_window_hidden, quit_coordinator);
+        let processor = cx.new(|_| Processor::new(data.clone(), main_window_hidden, quit_coordinator));
+        processor.update(cx, |p, _| {
+            p.self_entity = Some(processor.clone());
+        });
 
         while let Some(message) = recv.try_recv() {
-            processor.process(message, cx);
+            processor.update(cx, |p, cx| p.process(message, cx));
         }
 
-        cx.spawn(async move |cx| {
-            while let Some(message) = recv.recv().await {
-                _ = cx.update(|cx| {
-                    processor.process(message, cx);
-                });
+        cx.spawn({
+            let processor = processor.clone();
+            async move |cx| {
+                while let Some(message) = recv.recv().await {
+                    _ = cx.update(|cx| {
+                        processor.update(cx, |p, cx| p.process(message, cx));
+                    });
+                }
             }
         }).detach();
     });
@@ -198,7 +217,9 @@ pub fn open_main_window(data: &DataEntities, cx: &mut App) -> AnyWindowHandle {
     let config = InterfaceConfig::get(cx);
 
     let window_bounds = match config.main_window_bounds {
-        interface_config::WindowBounds::Inherit => None,
+        interface_config::WindowBounds::Inherit => {
+            Some(WindowBounds::Maximized(Bounds::new(Point::default(), size(px(1920.0), px(1080.0)))))
+        },
         interface_config::WindowBounds::Windowed { x, y, w, h } => {
             Some(WindowBounds::Windowed(Bounds::new(Point::new(px(x), px(y)), Size::new(px(w), px(h)))))
         },

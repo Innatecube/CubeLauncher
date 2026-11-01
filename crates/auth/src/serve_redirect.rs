@@ -31,16 +31,24 @@ pub async fn start_server(
 ) -> Result<FinishedAuthorization, ProcessAuthorizationError> {
     log::info!("Starting auth redirect server on {}", constants::SERVER_ADDRESS);
 
-    let listener = tokio::net::TcpListener::bind(constants::SERVER_ADDRESS).await?;
+    let listener_v4 = tokio::net::TcpListener::bind(constants::SERVER_ADDRESS).await?;
+    let listener_v6 = tokio::net::TcpListener::bind("[::1]:3160").await.ok();
 
-    log::info!("Successfully started listening on {}", constants::SERVER_ADDRESS);
+    log::info!("Successfully started listening on {} (v6 available: {})", constants::SERVER_ADDRESS, listener_v6.is_some());
 
     let mut buf = vec![0_u8; 1024];
     let mut read;
 
     loop {
         log::info!("Waiting for a new connection");
-        let (mut stream, _addr) = listener.accept().await?;
+        let (mut stream, _addr) = if let Some(ref l_v6) = listener_v6 {
+            tokio::select! {
+                res_v4 = listener_v4.accept() => res_v4?,
+                res_v6 = l_v6.accept() => res_v6?,
+            }
+        } else {
+            listener_v4.accept().await?
+        };
         log::info!("Got a new connection");
 
         read = 0;
@@ -141,8 +149,9 @@ pub async fn start_server(
                 return Err(ProcessAuthorizationError::MissingCode);
             };
 
-            let response = create_response("Authorization complete", "You may now close this window", false);
+            let response = create_response("Authorization complete", "You may now close this window and return to CubeLauncher", false);
             stream.write_all(response.as_bytes()).await?;
+            _ = stream.flush().await;
 
             return Ok(FinishedAuthorization {
                 pending: pending_authroization,
@@ -159,7 +168,9 @@ fn create_response(main: &str, secondary: &str, error: bool) -> String {
         "200 OK"
     };
 
-    let body = format!(include_str!("auth_page.html"), main, secondary);
+    let body = include_str!("auth_page.html")
+        .replace("{{MAIN_MESSAGE}}", main)
+        .replace("{{SECONDARY_MESSAGE}}", secondary);
     let body_length = body.len();
 
     format!("HTTP/1.1 {status}\r\nContent-Type: text/html; charset=UTF-8\r\nContent-Length: {}\r\n\r\n{}", body_length, body)

@@ -4,7 +4,7 @@ use bridge::{install::{ContentDownload, ContentInstall, ContentInstallFile, Inst
 use enumset::EnumSet;
 use gpui::{prelude::*, *};
 use gpui_component::{
-    button::{Button, ButtonVariants}, checkbox::Checkbox, dialog::Dialog, h_flex, notification::NotificationType, select::{SearchableVec, Select, SelectItem, SelectState}, v_flex, IndexPath, WindowExt
+    button::{Button, ButtonVariants}, checkbox::Checkbox, dialog::Dialog, h_flex, notification::NotificationType, select::{SearchableVec, Select, SelectItem, SelectState}, v_flex, ActiveTheme, FocusableExt, IndexPath, WindowExt
 };
 use relative_path::RelativePath;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -97,7 +97,33 @@ pub fn open(
         open_error_dialog(title.clone(), t::instance::content::load::versions::not_found().into(), window, cx);
         return;
     }
-    if let Some(install_for) = install_for {
+    if project_type == CurseforgeClassId::Modpack {
+        let install_dialog = InstallDialog {
+            title,
+            name: name.into(),
+            data: data.clone(),
+            project_type,
+            project_id: hit.id,
+            version_matrix,
+            instances: None,
+            unsupported_instances: 0,
+            target: Some(InstallTarget::NewInstance {
+                name: None,
+            }),
+            fixed_minecraft_version: None,
+            minecraft_version_select_state: None,
+            force_target_loader: false,
+            target_loader: None,
+            loader_select_state: None,
+            last_selected_minecraft_version: None,
+            single_loader_set: None,
+            install_dependencies: true,
+            mod_version_select_state: None,
+            last_selected_loader: None,
+            mod_versions_retry_task: Task::ready(()),
+        };
+        install_dialog.show(window, cx);
+    } else if let Some(install_for) = install_for {
         let Some(instance) = data.instances.read(cx).entries.get(&install_for) else {
             open_error_dialog(title.clone(), t::instance::unable_to_find().into(), window, cx);
             return;
@@ -115,7 +141,7 @@ pub fn open(
         };
 
         let mut valid_loader = true;
-        if project_type == CurseforgeClassId::Mod || project_type == CurseforgeClassId::Modpack {
+        if project_type.mod_or_modpack() {
             valid_loader = instance_loader == Loader::Vanilla
                 || loaders.loaders.contains(instance_loader.as_curseforge_loader());
         }
@@ -167,7 +193,7 @@ pub fn open(
 
                 if let Some(loaders) = version_matrix.get(minecraft_version) {
                     let mut valid_loader = true;
-                    if project_type == CurseforgeClassId::Mod || project_type == CurseforgeClassId::Modpack {
+                    if project_type == CurseforgeClassId::Mod {
                         valid_loader = instance_loader == Loader::Vanilla
                             || loaders.loaders.contains(instance_loader.as_curseforge_loader());
                     }
@@ -419,8 +445,9 @@ impl InstallDialog {
                         files: files.into(),
                     };
 
+                    let is_modpack = this.project_type == CurseforgeClassId::Modpack;
                     window.close_dialog(cx);
-                    root::start_install(content_install, &this.data.backend_handle, window, cx);
+                    root::start_install(content_install, this.title.clone(), None, is_modpack, &this.data, window, cx);
                 },
             )));
 
@@ -439,38 +466,57 @@ impl InstallDialog {
         v_flex()
             .gap_2()
             .text_center()
-            .when_some(self.instances.as_ref(), |content, instances| {
+            .when(self.project_type != CurseforgeClassId::Modpack, |this| {
+                this.when_some(self.instances.as_ref(), |content, instances| {
                 let read_instances = instances.read(cx);
                 let selected_instance: Option<InstanceEntry> = read_instances.selected_value().cloned();
 
                 let button_and_dropdown = h_flex()
+                    .w_full()
                     .gap_2()
+                    .items_center()
                     .child(
-                        v_flex()
-                            .w_full()
-                            .gap_0p5()
+                        div()
+                            .flex_1()
+                            .min_w_0()
                             .child(
-                                Select::new(instances).placeholder(t::instance::none_selected())
+                                Select::new(instances)
+                                    .placeholder(t::instance::none_selected())
                                     .title_prefix(format!("{}: ", t::instance::label()))
-                                    .search_placeholder(t::common::search()),
+                                    .focus_ring(false)
                             )
-                            .when(self.unsupported_instances > 0, |content| {
-                                content.child(t::instance::incompatible(self.unsupported_instances))
-                            }),
                     )
                     .when_some(selected_instance, |dialog, instance| {
-                        dialog.child(Button::new("instance").success().h_full().label(t::instance::content::install::add_to_instance()).on_click(
-                            cx.listener(move |this, _, _, _| {
-                                this.target = Some(InstallTarget::Instance(instance.id));
-                                this.fixed_minecraft_version = Some(instance.configuration.minecraft_version.as_str());
-                                this.force_target_loader = this.project_type.mod_or_modpack() && instance.configuration.loader != Loader::Vanilla;
-                                this.target_loader = Some(instance.configuration.loader);
-                            }),
-                        ))
+                        dialog.child(
+                            Button::new("instance")
+                                .success()
+                                .label(t::instance::content::install::add_to_instance())
+                                .on_click(
+                                    cx.listener(move |this, _, _, _| {
+                                        this.target = Some(InstallTarget::Instance(instance.id));
+                                        this.fixed_minecraft_version = Some(instance.configuration.minecraft_version.as_str());
+                                        this.force_target_loader = this.project_type.mod_or_modpack() && instance.configuration.loader != Loader::Vanilla;
+                                        this.target_loader = Some(instance.configuration.loader);
+                                    }),
+                                )
+                        )
                     });
 
-                content.child(button_and_dropdown).child(format!("— {} —", t::common::or_upper()))
-            })
+                let instance_selection_section = v_flex()
+                    .w_full()
+                    .gap_1p5()
+                    .child(button_and_dropdown)
+                    .when(self.unsupported_instances > 0, |content| {
+                        content.child(
+                            div()
+                                .text_xs()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(t::instance::incompatible(self.unsupported_instances))
+                        )
+                    });
+
+                content.child(instance_selection_section).child(format!("— {} —", t::common::or_upper()))
+            })})
             .child(Button::new("create").success().label(create_instance_label).on_click(cx.listener(
                 |this, _, _, _| {
                     this.target = Some(InstallTarget::NewInstance {

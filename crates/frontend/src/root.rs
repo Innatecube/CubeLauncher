@@ -10,7 +10,7 @@ use bridge::{
     modal_action::ModalAction,
 };
 use gpui::{prelude::*, *};
-use gpui_component::{Root, Theme, scroll::ScrollableElement, v_flex};
+use gpui_component::{Root, Theme, WindowExt, scroll::ScrollableElement, v_flex};
 use rustc_hash::FxHashSet;
 
 use crate::{Backwards, CloseWindow, Forwards, OpenSettings, entity::DataEntities, game_output::{GameOutput, GameOutputRoot}, interface_config::{InterfaceConfig, LiveGameOutputDisplay}, modals, pages::instance::instance_page::InstanceSubpageType, ui::{LauncherUI, PageType}};
@@ -48,7 +48,7 @@ impl LauncherRoot {
 
 static RENDER_CUSTOM_TITLEBAR: AtomicBool = AtomicBool::new(true);
 
-pub(crate) fn should_render_custom_titlebar() -> bool {
+pub fn should_render_custom_titlebar() -> bool {
     RENDER_CUSTOM_TITLEBAR.load(std::sync::atomic::Ordering::Relaxed)
 }
 
@@ -80,9 +80,15 @@ impl Render for LauncherRoot {
         let dialog_layer = Root::render_dialog_layer(window, cx);
         let notification_layer = Root::render_notification_layer(window, cx);
 
+        let has_modal = dialog_layer.is_some() || sheet_layer.is_some();
+        let ui_content = div()
+            .size_full()
+            .when(has_modal, |this| this.opacity(0.30))
+            .child(self.ui.clone());
+
         v_flex()
             .size_full()
-            .child(self.ui.clone())
+            .child(ui_content)
             .children(sheet_layer)
             .children(dialog_layer)
             .children(notification_layer)
@@ -91,11 +97,9 @@ impl Render for LauncherRoot {
                 window.remove_window();
             })
             .on_action({
-                let ui = self.ui.clone();
+                let data = self.data.clone();
                 move |_: &OpenSettings, window, cx| {
-                    ui.update(cx, |ui, cx| {
-                        ui.switch_page(crate::ui::PageType::Settings, &[], window, cx);
-                    });
+                    open_settings_modal(&data, window, cx);
                 }
             })
             .on_action({
@@ -238,26 +242,47 @@ pub fn start_instance(
 
 pub fn start_install(
     content_install: ContentInstall,
-    backend_handle: &BackendHandle,
-    window: &mut Window,
+    name: SharedString,
+    icon: Option<schema::unique_bytes::UniqueBytes>,
+    is_modpack: bool,
+    data: &DataEntities,
+    _window: &mut Window,
     cx: &mut App,
 ) {
     let modal_action = ModalAction::default();
 
-    backend_handle.send(MessageToBackend::InstallContent {
+    let instance_id = match &content_install.target {
+        bridge::install::InstallTarget::Instance(id) => Some(*id),
+        bridge::install::InstallTarget::NewInstance { name: target_name } => {
+            let reg_name = target_name.as_ref().map(|s| s.to_string()).unwrap_or_else(|| name.to_string());
+            data.tasks.update(cx, |t, cx| {
+                t.register_pending_creation(reg_name, icon.clone(), modal_action.clone(), is_modpack, cx);
+            });
+            None
+        },
+        bridge::install::InstallTarget::Library => None,
+    };
+
+    if !matches!(&content_install.target, bridge::install::InstallTarget::NewInstance { .. }) {
+        data.tasks.update(cx, |tasks, cx| {
+            tasks.add_task(instance_id, name.clone(), icon.clone(), modal_action.clone(), is_modpack, cx);
+        });
+    }
+
+    data.backend_handle.send(MessageToBackend::InstallContent {
         content: content_install.clone(),
         modal_action: modal_action.clone(),
     });
-
-    modals::generic::show_notification(window, cx, t::instance::content::install::error().into(), modal_action);
 }
 
 pub fn change_mod_version(
     content_install: ContentInstall,
     hash: u64,
     updating: &Arc<Mutex<FxHashSet<u64>>>,
-    backend_handle: &BackendHandle,
-    window: &mut Window,
+    name: SharedString,
+    icon: Option<schema::unique_bytes::UniqueBytes>,
+    data: &DataEntities,
+    _window: &mut Window,
     cx: &mut App,
 ) {
     let modal_action = ModalAction::default();
@@ -270,12 +295,19 @@ pub fn change_mod_version(
         }
     });
 
-    backend_handle.send(MessageToBackend::InstallContent {
+    let instance_id = match &content_install.target {
+        bridge::install::InstallTarget::Instance(id) => Some(*id),
+        _ => None,
+    };
+
+    data.tasks.update(cx, |tasks, cx| {
+        tasks.add_task(instance_id, name.clone(), icon.clone(), modal_action.clone(), false, cx);
+    });
+
+    data.backend_handle.send(MessageToBackend::InstallContent {
         content: content_install.clone(),
         modal_action: modal_action.clone(),
     });
-
-    modals::generic::show_notification(window, cx, t::instance::content::install::error().into(), modal_action);
 }
 
 pub fn start_update_check(
@@ -300,8 +332,9 @@ pub fn update_single_mod(
     mod_id: InstanceContentID,
     hash: u64,
     updating: &Arc<Mutex<FxHashSet<u64>>>,
-    backend_handle: &BackendHandle,
-    window: &mut Window,
+    name: SharedString,
+    data: &DataEntities,
+    _window: &mut Window,
     cx: &mut App,
 ) {
     let modal_action = ModalAction::default();
@@ -314,13 +347,20 @@ pub fn update_single_mod(
         }
     });
 
-    backend_handle.send(MessageToBackend::UpdateContent {
+    let (inst_name, inst_icon) = data.instances.read(cx).entries.get(&instance).map(|e| {
+        let entry = e.read(cx);
+        (entry.name.clone(), entry.icon.clone())
+    }).unwrap_or_else(|| (name.clone(), None));
+
+    data.tasks.update(cx, |tasks, cx| {
+        tasks.add_task(Some(instance), inst_name, inst_icon, modal_action.clone(), false, cx);
+    });
+
+    data.backend_handle.send(MessageToBackend::UpdateContent {
         instance,
         content_id: mod_id,
         modal_action: modal_action.clone(),
     });
-
-    modals::generic::show_notification(window, cx, t::instance::content::update::download::error().into(), modal_action);
 }
 
 pub fn upload_log_file(
@@ -353,4 +393,31 @@ pub fn switch_page(
             });
         });
     });
+}
+
+pub fn open_settings_modal(data: &DataEntities, window: &mut Window, cx: &mut App) {
+    capture_backdrop_blur(window, cx);
+    let settings_page = crate::settings::create_settings_page(data, window, cx);
+    window.open_dialog(cx, move |dialog, _, _| {
+        dialog
+            .w(px(940.0))
+            .h(px(580.0))
+            .margin_top(px(32.0))
+            .title(t::settings::title())
+            .close_button(true)
+            .overlay_closable(true)
+            .child(settings_page.clone())
+    });
+}
+
+pub fn close_settings_modal(cx: &mut App) {
+    if let Some(active) = cx.active_window() {
+        cx.update_window(active, |_, window, cx| {
+            window.close_dialog(cx);
+        }).ok();
+    }
+}
+
+pub fn capture_backdrop_blur(_window: &mut Window, _cx: &mut App) {
+    // Backdrop blur capture hook for modals
 }

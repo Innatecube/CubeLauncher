@@ -512,13 +512,7 @@ impl RenderOnce for Button {
             .clone();
         let is_focused = focus_handle.is_focused(window);
 
-        let rounding = match self.rounded {
-            ButtonRounded::Small => cx.theme().radius * 0.5,
-            ButtonRounded::Medium => cx.theme().radius,
-            ButtonRounded::Large => cx.theme().radius * 2.0,
-            ButtonRounded::Size(px) => px,
-            ButtonRounded::None => Pixels::ZERO,
-        };
+        let rounding = Pixels::ZERO;
 
         let root = base
             .cursor_default()
@@ -611,10 +605,10 @@ impl RenderOnce for Button {
             .id("label")
             .size_full()
             .min_w_0()
-            .overflow_hidden()
             .whitespace_nowrap()
             .items_center()
             .justify_center()
+            .line_height(relative(1.25))
             .button_text_size(self.size)
             .map(|this| match self.size {
                 Size::XSmall => this.gap_1(),
@@ -632,10 +626,8 @@ impl RenderOnce for Button {
                 this.child(
                     div()
                         .min_w_0()
-                        .overflow_hidden()
                         .whitespace_nowrap()
-                        .truncate()
-                        .line_height(relative(1.))
+                        .text_ellipsis()
                         .child(label),
                 )
             })

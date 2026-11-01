@@ -4,7 +4,7 @@ use bridge::{install::{ContentDownload, ContentInstall, ContentInstallFile, Inst
 use enumset::EnumSet;
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme, Icon, Selectable, WindowExt, button::{Button, ButtonGroup, ButtonVariant, ButtonVariants}, h_flex, input::{Input, InputEvent, InputState}, menu::{DropdownMenu, PopupMenuItem}, notification::NotificationType, scroll::{ScrollableElement, Scrollbar}, skeleton::Skeleton, v_flex
+    ActiveTheme, Icon, Selectable, StyledExt, WindowExt, button::{Button, ButtonCustomVariant, ButtonGroup, ButtonVariant, ButtonVariants}, h_flex, input::{Input, InputEvent, InputState}, menu::{DropdownMenu, PopupMenuItem}, notification::NotificationType, scroll::{ScrollableElement, Scrollbar}, skeleton::Skeleton, v_flex
 };
 use rustc_hash::FxHashMap;
 use schema::{content::{ContentInstallReason, ContentSource}, loader::Loader, modrinth::{
@@ -132,6 +132,7 @@ impl ModrinthSearchPage {
 
         let mut content_states = None;
         if let Some(install_for) = install_for {
+            InterfaceConfig::get_mut(cx).content_filter_version = true;
             if let Some(entry) = data.instances.read(cx).entries.get(&install_for) {
                 let instance = entry.read(cx);
                 content_states = Some(instance.content_states.clone());
@@ -344,19 +345,20 @@ impl ModrinthSearchPage {
             ModrinthProjectType::Resourcepack => "resourcepack",
             ModrinthProjectType::Shader => "shader",
         };
+        let allows_loaders = matches!(filter_project_type, ModrinthProjectType::Mod | ModrinthProjectType::Modpack | ModrinthProjectType::Other);
 
         let offset = if self.pending_clear { 0 } else { self.hits.len() };
 
         let mut facets = format!("[[\"project_type={}\"]", project_type);
 
-        let is_mod = filter_project_type == ModrinthProjectType::Mod || filter_project_type == ModrinthProjectType::Modpack;
-        if is_mod && let Some(filter_version) = self.filter_version && modrinth_filter_version {
+        let should_filter_version = filter_project_type != ModrinthProjectType::Resourcepack;
+        if should_filter_version && let Some(filter_version) = self.filter_version && modrinth_filter_version {
             facets.push_str(",[\"versions=");
             facets.push_str(&filter_version);
             facets.push_str("\"]");
         }
 
-        if !self.filter_loaders.is_empty() && is_mod {
+        if !self.filter_loaders.is_empty() && allows_loaders {
             facets.push_str(",[");
 
             let mut first = true;
@@ -366,7 +368,7 @@ impl ModrinthSearchPage {
                 } else {
                     facets.push(',');
                 }
-                facets.push_str("\"categories:");
+                facets.push_str("\"categories=");
                 facets.push_str(loader.as_modrinth_loader().id());
                 facets.push('"');
             }
@@ -383,7 +385,7 @@ impl ModrinthSearchPage {
                 } else {
                     facets.push(',');
                 }
-                facets.push_str("\"categories:");
+                facets.push_str("\"categories=");
                 facets.push_str(*category);
                 facets.push('"');
             }
@@ -492,7 +494,7 @@ impl ModrinthSearchPage {
                         return div()
                             .pl_3()
                             .pt_3()
-                            .child(Skeleton::new().w_full().h(px(28.0 * 4.0)).rounded_lg());
+                            .child(Skeleton::new().w_full().h(px(28.0 * 4.0)).rounded_none());
                     }
                 };
 
@@ -500,7 +502,7 @@ impl ModrinthSearchPage {
                     && !icon_url.is_empty()
                 {
                     gpui::img(SharedUri::from(icon_url))
-                        .with_fallback(|| Skeleton::new().rounded_lg().size_16().into_any_element())
+                        .with_fallback(|| Skeleton::new().rounded_none().size_16().into_any_element())
                 } else {
                     gpui::img(ImageSource::Resource(Resource::Embedded(
                         "images/default_mod.png".into(),
@@ -578,47 +580,69 @@ impl ModrinthSearchPage {
                 };
 
                 let primary_action = self.get_primary_action(&hit.project_id, cx);
+                let is_install_like = matches!(
+                    primary_action,
+                    PrimaryAction::Install
+                        | PrimaryAction::Reinstall
+                        | PrimaryAction::InstallLatest
+                        | PrimaryAction::Update(..)
+                );
 
-                let install_button = Button::new(("install", index))
+                let custom_install = ButtonCustomVariant::new(cx)
+                    .color(rgb(0x04242e).into())
+                    .foreground(rgb(0x00f0ff).into())
+                    .hover(rgb(0x063e4d).into())
+                    .active(rgb(0x031c24).into());
+
+                let mut install_button = Button::new(("install", index))
                     .label(primary_action.text())
-                    .icon(primary_action.icon())
-                    .with_variant(primary_action.button_variant())
-                    .on_click({
-                        let data = self.data.clone();
-                        let name = name.clone();
-                        let project_id = hit.project_id.clone();
-                        let install_for = self.install_for.clone();
-                        let project_type = hit.project_type;
+                    .icon(primary_action.icon());
 
-                        move |_, window, cx| {
-                            cx.stop_propagation();
+                if is_install_like {
+                    install_button = install_button
+                        .custom(custom_install)
+                        .border_1()
+                        .border_color(rgb(0x00e5ff));
+                } else {
+                    install_button = install_button.with_variant(primary_action.button_variant());
+                }
 
-                            if project_type != ModrinthProjectType::Other {
-                                primary_action.perform(name.clone(), &project_id, project_type, install_for, &data, window, cx);
-                            } else {
-                                window.push_notification(
-                                    (
-                                        NotificationType::Error,
-                                        t::instance::content::install::unknown_type(),
-                                    ),
-                                    cx,
-                                );
-                            }
+                let install_button = install_button.on_click({
+                    let data = self.data.clone();
+                    let name = name.clone();
+                    let project_id = hit.project_id.clone();
+                    let install_for = self.install_for.clone();
+                    let project_type = hit.project_type;
+
+                    move |_, window, cx| {
+                        cx.stop_propagation();
+
+                        if project_type != ModrinthProjectType::Other {
+                            primary_action.perform(name.clone(), &project_id, project_type, install_for, &data, window, cx);
+                        } else {
+                            window.push_notification(
+                                (
+                                    NotificationType::Error,
+                                    t::instance::content::install::unknown_type(),
+                                ),
+                                cx,
+                            );
                         }
-                    });
+                    }
+                });
 
                 let item = h_flex()
-                    .rounded_lg()
+                    .rounded_none()
                     .px_4()
                     .py_2()
                     .gap_4()
                     .h_32()
-                    .bg(theme.background)
+                    .bg(theme.popover)
                     .border_color(theme.border)
                     .border_1()
-                    .hover(|style| style.bg(theme.secondary.opacity(0.4)).border_color(theme.info.opacity(0.5)).shadow_sm())
+                    .hover(|style| style.bg(theme.secondary_hover).border_color(rgb(0x00e5ff).opacity(0.6)).shadow_sm())
                     .size_full()
-                    .child(image.rounded_lg().size_16().min_w_16().min_h_16())
+                    .child(image.rounded_none().size_16().min_w_16().min_h_16())
                     .child(
                         v_flex()
                             .id(("open-project", index))
@@ -741,6 +765,19 @@ impl PrimaryAction {
                 );
             },
             PrimaryAction::InstallLatest => {
+                if project_type == ModrinthProjectType::Modpack {
+                    crate::modals::modrinth_install::open(
+                        name,
+                        project_id.clone(),
+                        project_type,
+                        None,
+                        data,
+                        window,
+                        cx,
+                    );
+                    return;
+                }
+
                 let Some(install_for) = install_for else {
                     window.push_notification((NotificationType::Error, t::instance::unable_to_find()), cx);
                     return;
@@ -776,31 +813,42 @@ impl PrimaryAction {
                     ].into(),
                 };
 
-                crate::root::start_install(content_install, &data.backend_handle, window, cx);
+                let is_modpack = project_type == ModrinthProjectType::Modpack;
+                crate::root::start_install(content_install, name.clone(), None, is_modpack, &data, window, cx);
             },
             PrimaryAction::CheckForUpdates => {
-                let modal_action = ModalAction::default();
-                data.backend_handle.send(MessageToBackend::UpdateCheck {
-                    instance: install_for.unwrap(),
-                    modal_action: modal_action.clone()
-                });
-                crate::modals::generic::show_notification(window, cx,
-                    t::instance::content::update::check::error().into(), modal_action);
+                if let Some(instance) = install_for {
+                    let modal_action = ModalAction::default();
+                    data.backend_handle.send(MessageToBackend::UpdateCheck {
+                        instance,
+                        modal_action: modal_action.clone()
+                    });
+                    crate::modals::generic::show_notification(window, cx,
+                        t::instance::content::update::check::error().into(), modal_action);
+                }
             },
             PrimaryAction::ErrorCheckingForUpdates => {},
             PrimaryAction::UpToDate => {},
             PrimaryAction::Update(ids) => {
-                for id in ids {
-                    let modal_action = ModalAction::default();
-                    data.backend_handle.send(MessageToBackend::UpdateContent {
-                        instance: install_for.unwrap(),
-                        content_id: *id,
-                        modal_action: modal_action.clone()
-                    });
-                    crate::modals::generic::show_notification(window, cx,
-                        t::instance::content::update::error().into(), modal_action);
-                }
+                if let Some(instance) = install_for {
+                    for id in ids {
+                        let modal_action = ModalAction::default();
+                        let (inst_name, inst_icon) = data.instances.read(cx).entries.get(&instance).map(|e| {
+                            let entry = e.read(cx);
+                            (entry.name.clone(), entry.icon.clone())
+                        }).unwrap_or_else(|| (name.clone(), None));
 
+                        data.tasks.update(cx, |t, cx| {
+                            t.add_task(Some(instance), inst_name, inst_icon, modal_action.clone(), false, cx);
+                        });
+
+                        data.backend_handle.send(MessageToBackend::UpdateContent {
+                            instance,
+                            content_id: *id,
+                            modal_action: modal_action.clone()
+                        });
+                    }
+                }
             },
         }
     }
@@ -848,19 +896,58 @@ impl Render for ModrinthSearchPage {
                     .child(Scrollbar::vertical(&scroll_handle)),
             );
 
-        let mut top_bar = h_flex()
-            .w_full()
-            .gap_4()
-            .items_center()
-            .child(div().flex_1().child(Input::new(&self.search_state)));
-
-        let instance_name = self.install_for.as_ref().and_then(|id| {
-            self.data.instances.read(cx).entries.get(id).map(|e| e.read(cx).name.clone())
+        let instance_info = self.install_for.as_ref().and_then(|id| {
+            self.data.instances.read(cx).entries.get(id).map(|e| {
+                let inst = e.read(cx);
+                (inst.name.clone(), inst.icon.clone(), inst.configuration.instance_fallback_icon.clone())
+            })
         });
 
-        if let Some(instance_name) = instance_name {
+        let mut top_bar = h_flex()
+            .w_full()
+            .gap_3()
+            .items_center();
+
+        if let Some((instance_name, instance_icon, fallback_icon)) = &instance_info {
+            let back_name = instance_name.clone();
+            let back_button = Button::new("back_to_instance")
+                .ghost()
+                .icon(PandoraIcon::ArrowLeft)
+                .label("Back to instance")
+                .on_click(move |_, window, cx| {
+                    let path = &[PageType::Instances];
+                    root::switch_page(PageType::InstancePage { name: back_name.clone() }, path, window, cx);
+                });
+
+            let tile = crate::component::instance_icon::render_sidebar_tile(
+                instance_icon.clone(),
+                instance_name,
+                fallback_icon.as_deref(),
+                cx,
+            );
+
+            let instance_badge = h_flex()
+                .gap_2()
+                .items_center()
+                .child(tile)
+                .child(
+                    div()
+                        .text_sm()
+                        .font_bold()
+                        .text_color(cx.theme().foreground)
+                        .child(instance_name.clone())
+                );
+
+            top_bar = top_bar
+                .child(back_button)
+                .child(instance_badge);
+        }
+
+        top_bar = top_bar.child(div().flex_1().child(Input::new(&self.search_state)));
+
+        let provider_button = if let Some((instance_name, _, _)) = &instance_info {
             let instance_name_clone = instance_name.clone();
-            let provider_button = Button::new("provider_btn")
+            Button::new("provider_btn")
                 .label("Modrinth")
                 .dropdown_menu(move |menu, _, _| {
                     let instance_name = instance_name_clone.clone();
@@ -871,25 +958,38 @@ impl Render for ModrinthSearchPage {
                             root::switch_page(page, path, window, cx);
                         });
                     menu.item(cf)
-                });
+                })
+        } else {
+            Button::new("provider_btn")
+                .label("Modrinth")
+                .dropdown_menu(move |menu, _, _| {
+                    let cf = PopupMenuItem::new("Curseforge")
+                        .on_click(move |_, window, cx| {
+                            let page = crate::ui::PageType::Curseforge { installing_for: None };
+                            root::switch_page(page, &[], window, cx);
+                        });
+                    menu.item(cf)
+                })
+        };
 
-            top_bar = top_bar.child(
-                h_flex()
-                    .gap_2()
-                    .items_center()
-                    .child(div().text_sm().font_weight(FontWeight::BOLD).text_color(cx.theme().foreground).child("Provider"))
-                    .child(provider_button)
-            );
-        }
+        top_bar = top_bar.child(
+            h_flex()
+                .gap_2()
+                .items_center()
+                .child(div().text_sm().font_weight(FontWeight::BOLD).text_color(cx.theme().foreground).child("Provider"))
+                .child(provider_button)
+        );
 
         let theme = cx.theme();
         let content = v_flex()
-            .size_full()
+            .flex_1()
+            .min_w_0()
+            .h_full()
             .gap_3()
             .p_3()
             .pl_0()
             .child(top_bar)
-            .child(div().size_full().rounded_lg().border_1().border_color(theme.border).child(list));
+            .child(div().w_full().flex_1().min_h_0().rounded_none().border_1().border_color(theme.border).child(list));
 
         let disabled_color = cx.theme().button_foreground.opacity(0.5);
         let selection_button = |id: &'static str, selected: bool| -> Button {
@@ -914,11 +1014,11 @@ impl Render for ModrinthSearchPage {
             .child(selection_button("shaders", filter_project_type == ModrinthProjectType::Shader)
                 .label(t::instance::content::shaders())
             )
-            .on_click(cx.listener(|page, clicked: &Vec<usize>, window, cx| match clicked[0] {
-                0 => page.set_project_type(ModrinthProjectType::Mod, window, cx),
-                1 => page.set_project_type(ModrinthProjectType::Modpack, window, cx),
-                2 => page.set_project_type(ModrinthProjectType::Resourcepack, window, cx),
-                3 => page.set_project_type(ModrinthProjectType::Shader, window, cx),
+            .on_click(cx.listener(|page, clicked: &Vec<usize>, window, cx| match clicked.first() {
+                Some(0) => page.set_project_type(ModrinthProjectType::Mod, window, cx),
+                Some(1) => page.set_project_type(ModrinthProjectType::Modpack, window, cx),
+                Some(2) => page.set_project_type(ModrinthProjectType::Resourcepack, window, cx),
+                Some(3) => page.set_project_type(ModrinthProjectType::Shader, window, cx),
                 _ => {},
             }));
 
@@ -951,7 +1051,6 @@ impl Render for ModrinthSearchPage {
         };
 
         let is_category_shown = self.show_categories.load(std::sync::atomic::Ordering::Relaxed);
-        let show_categories = self.show_categories.clone();
 
         let category = v_flex()
             .gap_1()
@@ -960,9 +1059,11 @@ impl Render for ModrinthSearchPage {
                     .label(t::instance::content::categories())
                     .icon(if is_category_shown { PandoraIcon::ChevronDown } else { PandoraIcon::ChevronRight })
                     .when(!is_category_shown, |this| this.outline())
-                    .on_click(move |_, _, _| {
-                        show_categories.store(!is_category_shown, std::sync::atomic::Ordering::Relaxed);
-                    })
+                    .on_click(cx.listener(|page, _, _, cx| {
+                        let prev = page.show_categories.load(std::sync::atomic::Ordering::Relaxed);
+                        page.show_categories.store(!prev, std::sync::atomic::Ordering::Relaxed);
+                        cx.notify();
+                    }))
             )
             .when(is_category_shown, |this| this.child(ButtonGroup::new("category_group")
                 .layout(Axis::Vertical)
@@ -985,7 +1086,6 @@ impl Render for ModrinthSearchPage {
             .into_any_element();
 
         let is_sort_shown = self.show_sort_options.load(std::sync::atomic::Ordering::Relaxed);
-        let show_sort_options = self.show_sort_options.clone();
 
         let sort = v_flex()
             .gap_1()
@@ -994,9 +1094,11 @@ impl Render for ModrinthSearchPage {
                     .label(t::instance::content::sort())
                     .icon(if is_sort_shown { PandoraIcon::ChevronDown } else { PandoraIcon::ChevronRight })
                     .when(!is_sort_shown, |this| this.outline())
-                    .on_click(move |_, _, _| {
-                        show_sort_options.store(!is_sort_shown, std::sync::atomic::Ordering::Relaxed);
-                    })
+                    .on_click(cx.listener(|page, _, _, cx| {
+                        let prev = page.show_sort_options.load(std::sync::atomic::Ordering::Relaxed);
+                        page.show_sort_options.store(!prev, std::sync::atomic::Ordering::Relaxed);
+                        cx.notify();
+                    }))
             )
             .when(is_sort_shown, |this| this.child(ButtonGroup::new("sort_group")
                 .layout(Axis::Vertical)
@@ -1007,14 +1109,16 @@ impl Render for ModrinthSearchPage {
                             .child(t::modrinth::sort::get(search_index.as_str()).unwrap_or("missing_translation")))
                 }))
                 .on_click(cx.listener(move |page, clicked: &Vec<usize>, window, cx| {
-                    let sort_option = ModrinthSearchIndex::iter().nth(clicked[0]).unwrap_or_default();
-                    page.set_sort_option(sort_option, window, cx);
+                    if let Some(&ix) = clicked.first() {
+                        let sort_option = ModrinthSearchIndex::iter().nth(ix).unwrap_or_default();
+                        page.set_sort_option(sort_option, window, cx);
+                    }
                 }))))
             .into_any_element();
 
 
-        let is_mod = filter_project_type == ModrinthProjectType::Mod || filter_project_type == ModrinthProjectType::Modpack;
-        let filter_version_toggle = if is_mod && let Some(filter_version) = self.filter_version {
+        let should_filter_version = filter_project_type != ModrinthProjectType::Resourcepack;
+        let filter_version_toggle = if should_filter_version && let Some(filter_version) = self.filter_version {
             let title = format!("{}: {}", t::instance::version(), filter_version);
             Some(selection_button("filter_version", InterfaceConfig::get(cx).content_filter_version)
                 .label(title)
@@ -1041,7 +1145,7 @@ impl Render for ModrinthSearchPage {
             .child(category)
             .child(sort);
 
-        h_flex().flex_1().min_h_0().size_full().child(parameters).child(content)
+        h_flex().size_full().child(parameters).child(content)
     }
 }
 

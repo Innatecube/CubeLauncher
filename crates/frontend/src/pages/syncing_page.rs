@@ -208,7 +208,7 @@ impl SyncingPage {
                 }
             }));
 
-        let mut base = h_flex().line_height(relative(1.0)).gap_2p5().child(checkbox);
+        let mut base = h_flex().line_height(relative(1.25)).gap_2p5().child(checkbox);
 
         if is_loading {
             base = base.child(Spinner::new());

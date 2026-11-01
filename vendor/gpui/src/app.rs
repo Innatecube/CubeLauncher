@@ -2615,6 +2615,16 @@ impl App {
         }
     }
 
+    /// Sets whether the currently active drag operation should be locked to the Y axis only.
+    pub fn set_active_drag_lock_x(&mut self, lock_x: bool) -> bool {
+        if let Some(ref mut drag) = self.active_drag {
+            drag.lock_x = lock_x;
+            true
+        } else {
+            false
+        }
+    }
+
     /// Set the prompt renderer for GPUI. This will replace the default or platform specific
     /// prompts with this custom implementation.
     pub fn set_prompt_builder(
@@ -2980,6 +2990,12 @@ pub struct AnyDrag {
     /// Resolves the payload to offer the platform if the drag leaves the window.
     /// Invoked at most once per drag gesture, at promotion time.
     pub external_payload_source: Option<ExternalDragPayloadSource>,
+
+    /// Initial element origin position when the drag gesture was initiated
+    pub initial_offset: Point<Pixels>,
+
+    /// If true, the drag preview is locked horizontally to initial_offset.x
+    pub lock_x: bool,
 }
 
 /// Lazily resolves the payload handed to the platform when an internal drag is

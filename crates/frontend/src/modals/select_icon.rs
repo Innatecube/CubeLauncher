@@ -54,7 +54,7 @@ pub fn open_select_icon(
             div()
                 .id(index)
                 .p_1()
-                .rounded(px(6.0))
+                .rounded_none()
                 .border_1()
                 .border_color(border_color)
                 .hover(move |s| s.bg(secondary).border_color(primary))

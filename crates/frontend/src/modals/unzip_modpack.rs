@@ -23,7 +23,7 @@ pub fn open_unzip_modpack(
                 .w_full()
                 .gap_2()
                 .child(warning.clone())
-                .child(div().text_color(cx.theme().button_danger_foreground).rounded(cx.theme().radius).child(t::common::cannot_be_undone()))
+                .child(div().text_color(cx.theme().button_danger_foreground).rounded_none().child(t::common::cannot_be_undone()))
                 .child(h_flex()
                     .w_full()
                     .gap_2()

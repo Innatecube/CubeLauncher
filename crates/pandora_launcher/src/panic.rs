@@ -33,6 +33,11 @@ pub fn install_logging_hook() {
             None => format!("Thread {} panicked\n{}\n{:?}", thread_name, payload, PrettyBacktrace(backtrace)),
         };
         log::error!("{}", message);
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open("crash.log") {
+            use std::io::Write;
+            let _ = writeln!(f, "{}\n", message);
+            let _ = f.flush();
+        }
     }));
 }
 
@@ -40,32 +45,40 @@ pub fn install_hook(panic_message: Arc<RwLock<Option<String>>>, frontend_handle:
     let old_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         let thread = std::thread::current();
+        let thread_name = thread.name().unwrap_or("<unknown>");
+        let payload = match info.payload().downcast_ref::<&'static str>() {
+            Some(s) => *s,
+            None => match info.payload().downcast_ref::<String>() {
+                Some(s) => &**s,
+                None => "Box<Any>",
+            },
+        };
+
+        let backtrace = backtrace::Backtrace::new();
+
+        let message = match info.location() {
+            Some(location) => {
+                format!(
+                    "Thread {} panicked at {}:{}:{}\n{}\n{:?}",
+                    thread_name,
+                    location.file(),
+                    location.line(),
+                    location.column(),
+                    payload,
+                    PrettyBacktrace(backtrace)
+                )
+            },
+            None => format!("Thread {} panicked\n{}\n{:?}", thread_name, payload, PrettyBacktrace(backtrace)),
+        };
+
+        log::error!("{}", message);
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open("crash.log") {
+            use std::io::Write;
+            let _ = writeln!(f, "{}\n", message);
+            let _ = f.flush();
+        }
+
         if thread.name() == Some("tokio-runtime-worker") {
-            let payload = match info.payload().downcast_ref::<&'static str>() {
-                Some(s) => *s,
-                None => match info.payload().downcast_ref::<String>() {
-                    Some(s) => &**s,
-                    None => "Box<Any>",
-                },
-            };
-
-            let backtrace = backtrace::Backtrace::new();
-
-            let message = match info.location() {
-                Some(location) => {
-                    format!(
-                        "Backend panicked at {}:{}:{}\n{}\n{:?}",
-                        location.file(),
-                        location.line(),
-                        location.column(),
-                        payload,
-                        PrettyBacktrace(backtrace)
-                    )
-                },
-                None => format!("Backend panicked\n{}\n{:?}", payload, PrettyBacktrace(backtrace)),
-            };
-
-            log::error!("{}", message);
             *panic_message.write() = Some(message);
             frontend_handle.send(bridge::message::MessageToFrontend::Refresh);
         } else {

@@ -74,7 +74,7 @@ impl RenderOnce for ProgressBar {
             ProgressBarColor::Success => lerp(progress_bar_color, cx.theme().green, self.color_scale),
         };
 
-        div().w_full().relative().h(px(8.0)).rounded(radius).bg(color.opacity(0.2)).child(
+        div().w_full().relative().h(px(8.0)).rounded_none().bg(color.opacity(0.2)).child(
             div()
                 .absolute()
                 .top_0()
@@ -82,10 +82,7 @@ impl RenderOnce for ProgressBar {
                 .h_full()
                 .w(relative_w)
                 .bg(color)
-                .map(|this| match self.amount {
-                    v if v >= 1.0 => this.rounded(radius),
-                    _ => this.rounded_l(radius),
-                }),
+                .rounded_none(),
         )
     }
 }

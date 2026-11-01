@@ -16,11 +16,12 @@ pub struct InstanceDropdown {
 impl InstanceDropdown {
     pub fn create(instances: Arc<[InstanceEntry]>, window: &mut Window, cx: &mut App) -> Entity<SelectState<Self>> {
         cx.new(|cx| {
+            let is_searchable = instances.len() > 5;
             let instance_list = Self {
                 instances: instances.clone(),
                 search: SearchHelper::new(instances, |item| item.name.clone()),
             };
-            SelectState::new(instance_list, None, window, cx).searchable(true)
+            SelectState::new(instance_list, None, window, cx).searchable(is_searchable)
         })
     }
 

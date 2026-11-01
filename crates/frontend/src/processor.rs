@@ -12,6 +12,8 @@ pub struct Processor {
     main_window_hidden: Arc<AtomicBool>,
     waiting_for_window: Vec<MessageToFrontend>,
     quit_coordinator: QuitCoordinator,
+    is_first_launch: bool,
+    pub self_entity: Option<gpui::Entity<Processor>>,
 }
 
 impl Processor {
@@ -22,6 +24,8 @@ impl Processor {
             main_window_hidden,
             waiting_for_window: Vec::new(),
             quit_coordinator,
+            is_first_launch: true,
+            self_entity: None,
         }
     }
 
@@ -72,7 +76,7 @@ impl Processor {
                     &self.data.instances,
                     id,
                     name.as_str().into(),
-                    icon,
+                    icon.clone(),
                     root_path,
                     dot_minecraft_folder,
                     configuration,
@@ -82,6 +86,15 @@ impl Processor {
                     ContentStates::new(id, content_states, self.data.backend_handle.clone()),
                     cx,
                 );
+
+                if let Some(modal_action) = self.data.tasks.update(cx, |tasks, cx| {
+                    tasks.take_pending_creation(&name, id, icon.clone(), cx)
+                }) {
+                    self.data.backend_handle.send(bridge::message::MessageToBackend::PrepareInstanceFiles {
+                        id,
+                        modal_action,
+                    });
+                }
             },
             MessageToFrontend::InstanceRemoved { id } => {
                 InstanceEntries::remove(&self.data.instances, id, cx);
@@ -97,13 +110,28 @@ impl Processor {
                 status,
             } => {
                 if status == InstanceStatus::Running {
-                    if InterfaceConfig::get(cx).hide_main_window_on_launch {
-                        if let Some(handle) = self.main_window_handle.take() {
-                            self.main_window_hidden.store(true, std::sync::atomic::Ordering::SeqCst);
-                            _ = handle.update(cx, |_, window, _| {
-                                window.remove_window();
-                            });
+                    let behavior = {
+                        let cfg = InterfaceConfig::get(cx);
+                        if cfg.hide_main_window_on_launch && cfg.game_launch_behavior == crate::interface_config::GameLaunchBehavior::KeepOpen {
+                            crate::interface_config::GameLaunchBehavior::HideToTray
+                        } else {
+                            cfg.game_launch_behavior
                         }
+                    };
+
+                    match behavior {
+                        crate::interface_config::GameLaunchBehavior::CloseLauncher => {
+                            cx.quit();
+                        },
+                        crate::interface_config::GameLaunchBehavior::HideToTray => {
+                            if let Some(handle) = self.main_window_handle.take() {
+                                self.main_window_hidden.store(true, std::sync::atomic::Ordering::SeqCst);
+                                _ = handle.update(cx, |_, window, _| {
+                                    window.remove_window();
+                                });
+                            }
+                        },
+                        crate::interface_config::GameLaunchBehavior::KeepOpen => {},
                     }
                 } else if status == InstanceStatus::NotRunning {
                     if self.main_window_handle.is_none() && self.main_window_hidden.load(std::sync::atomic::Ordering::SeqCst) {
@@ -118,7 +146,7 @@ impl Processor {
                     &self.data.instances,
                     id,
                     name.as_str().into(),
-                    icon,
+                    icon.clone(),
                     root_path,
                     dot_minecraft_folder,
                     configuration,
@@ -220,6 +248,37 @@ impl Processor {
                     if res.is_ok() {
                         return;
                     }
+                }
+
+                if self.is_first_launch {
+                    self.is_first_launch = false;
+                    let (splash_handle, splash_is_alive) = crate::splash::open_splash_window(cx);
+                    let data = self.data.clone();
+                    let self_entity = self.self_entity.clone();
+
+                    cx.spawn({
+                        let splash_is_alive = splash_is_alive.clone();
+                        async move |cx| {
+                            cx.background_executor().timer(std::time::Duration::from_millis(1300)).await;
+
+                            _ = cx.update(|cx| {
+                                let main_handle = crate::open_main_window(&data, cx);
+                                if let Some(self_entity) = self_entity {
+                                    self_entity.update(cx, |p, cx| {
+                                        p.main_window_handle = Some(main_handle);
+                                        p.main_window_hidden.store(false, std::sync::atomic::Ordering::SeqCst);
+                                        p.process_messages_waiting_for_window(cx);
+                                    });
+                                }
+
+                                splash_is_alive.store(false, std::sync::atomic::Ordering::SeqCst);
+                                _ = splash_handle.update(cx, |_, window, _| {
+                                    window.remove_window();
+                                });
+                            });
+                        }
+                    }).detach();
+                    return;
                 }
 
                 self.main_window_handle = Some(crate::open_main_window(&self.data, cx));

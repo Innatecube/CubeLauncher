@@ -144,6 +144,8 @@ pub struct FileIndex {
 #[serde(rename_all = "camelCase")]
 pub struct CurseforgeModAsset {
     pub thumbnail_url: Arc<str>,
+    #[serde(default)]
+    pub url: Option<Arc<str>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -187,6 +189,8 @@ pub struct CurseforgeProjectLinks {
 pub struct CurseforgeProject {
     pub name: Arc<str>,
     pub links: CurseforgeProjectLinks,
+    #[serde(default)]
+    pub logo: Option<CurseforgeModAsset>,
 }
 
 #[derive(Debug, Deserialize, Clone)]

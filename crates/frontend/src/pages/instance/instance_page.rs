@@ -5,7 +5,7 @@ use bridge::{
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme as _, WindowExt, button::{Button, ButtonGroup, ButtonVariants}, h_flex, tab::{Tab, TabBar}, v_flex
+    ActiveTheme as _, Disableable, StyledExt as _, WindowExt, button::{Button, ButtonCustomVariant, ButtonGroup, ButtonVariants}, h_flex, tab::{Tab, TabBar}, v_flex
 };
 use serde::{Deserialize, Serialize};
 
@@ -25,7 +25,11 @@ impl InstancePage {
     pub fn new(instance_id: InstanceID, data: &DataEntities, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let instance = data.instances.read(cx).entries.get(&instance_id).unwrap().clone();
 
-        let instance_subpage = InterfaceConfig::get(cx).instance_subpage;
+        let mut instance_subpage = InterfaceConfig::get(cx).instance_subpage;
+        if instance_subpage == InstanceSubpageType::Settings {
+            InterfaceConfig::get_mut(cx).instance_subpage = InstanceSubpageType::Mods;
+            instance_subpage = InstanceSubpageType::Mods;
+        }
         let subpage = instance_subpage.create(&instance, data, data.backend_handle.clone(), window, cx);
 
         let subpage = subpage.unwrap_or_else(|| {
@@ -42,30 +46,8 @@ impl InstancePage {
 }
 
 impl Page for InstancePage {
-    fn controls(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let instance = self.instance.read(cx);
-
-        let settings_button = Button::new("instance_settings")
-            .ghost()
-            .icon(PandoraIcon::Settings)
-            .tooltip(t::settings::title())
-            .on_click(cx.listener(|_, _, _, cx| {
-                InterfaceConfig::get_mut(cx).instance_subpage = InstanceSubpageType::Settings;
-            }));
-
-        let dot_minecraft = instance.dot_minecraft_folder.clone();
-        let open_dot_minecraft_button = Button::new("open_dot_minecraft")
-            .ghost()
-            .icon(PandoraIcon::FolderOpen)
-            .tooltip(t::instance::open_folder())
-            .on_click({
-                let dot_minecraft = dot_minecraft.clone();
-                move |_, window, cx| {
-                    crate::open_folder(&dot_minecraft, window, cx);
-                }
-            });
-
-        h_flex().gap_2().items_center().child(settings_button).child(open_dot_minecraft_button)
+    fn controls(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        gpui::Empty
     }
 
     fn scrollable(&self, _cx: &App) -> bool {
@@ -75,7 +57,11 @@ impl Page for InstancePage {
 
 impl Render for InstancePage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let instance_subpage = InterfaceConfig::get(cx).instance_subpage;
+        let mut instance_subpage = InterfaceConfig::get(cx).instance_subpage;
+        if instance_subpage == InstanceSubpageType::Settings {
+            InterfaceConfig::get_mut(cx).instance_subpage = InstanceSubpageType::Mods;
+            instance_subpage = InstanceSubpageType::Mods;
+        }
         if instance_subpage != self.subpage.page_type() {
             let subpage = instance_subpage.create(&self.instance, &self.data, self.data.backend_handle.clone(), window, cx);
 
@@ -114,30 +100,68 @@ impl Render for InstancePage {
             InstanceSubpage::Logs(_) => 1,
             InstanceSubpage::ResourcePacks(_) => 2,
             InstanceSubpage::Shaders(_) => 3,
-            InstanceSubpage::Settings(_) => if show_shader_tab { 4 } else { 3 },
-            InstanceSubpage::LiveGameOutput(_) => if show_shader_tab { 5 } else { 4 },
+            InstanceSubpage::Settings(_) => 0,
+            InstanceSubpage::LiveGameOutput(_) => if show_shader_tab { 4 } else { 3 },
         };
 
-        let icon_element = crate::component::instance_icon::render_instance_tile(
+        let active_task = self.data.tasks.read(cx).snapshots().into_iter().find(|t| !t.is_finished && (t.id == Some(id) || t.name == instance_name));
+        let download_pct = active_task.as_ref().map(|t| {
+            if t.total > 0 {
+                (t.count as f32 / t.total as f32).clamp(0.01, 1.0)
+            } else {
+                0.08
+            }
+        });
+
+        let icon_element = crate::component::instance_icon::render_instance_tile_with_download(
             icon,
             &instance_name,
             fallback_icon.as_deref(),
             48.0,
             10.0,
+            download_pct,
             cx,
         );
 
         let name = instance_name.clone();
         let data = self.data.clone();
 
-        let play_button = match status {
-            InstanceStatus::NotRunning => {
-                Button::new("start_instance").success().icon(PandoraIcon::Play).label("Play").on_click(
-                    move |_, window, cx| {
-                        root::start_instance(id, name.clone(), None, &data, window, cx);
-                    },
-                ).into_any_element()
-            },
+        let custom_play = ButtonCustomVariant::new(cx)
+            .color(rgb(0x04242e).into())
+            .foreground(rgb(0x00f0ff).into())
+            .hover(rgb(0x063e4d).into())
+            .active(rgb(0x031c24).into());
+
+        let is_installing = self.data.tasks.read(cx).is_active(id) || download_pct.is_some();
+        let play_button = if is_installing {
+            let label = if let Some(pct) = download_pct {
+                format!("Installing... {}%", (pct * 100.0) as u32)
+            } else {
+                "Installing...".to_string()
+            };
+            Button::new("installing_instance")
+                .custom(custom_play)
+                .border_1()
+                .border_color(rgb(0x00e5ff))
+                .icon(PandoraIcon::Loader)
+                .label(label)
+                .disabled(true)
+                .into_any_element()
+        } else {
+            match status {
+                InstanceStatus::NotRunning => {
+                    Button::new("start_instance")
+                        .custom(custom_play)
+                        .border_1()
+                        .border_color(rgb(0x00e5ff))
+                        .icon(PandoraIcon::Play)
+                        .label("Play")
+                        .on_click(
+                            move |_, window, cx| {
+                                root::start_instance(id, name.clone(), None, &data, window, cx);
+                            },
+                        ).into_any_element()
+                },
             InstanceStatus::Launching => {
                 Button::new("launching").warning().icon(PandoraIcon::Loader).label(t::instance::start::starting()).into_any_element()
             },
@@ -155,58 +179,47 @@ impl Render for InstancePage {
                     .into_any_element()
             },
             InstanceStatus::Running => {
-                ButtonGroup::new("running")
-                    .child(Button::new("kill_instance")
-                        .danger()
-                        .icon(PandoraIcon::Close)
-                        .label(t::instance::kill_instance())
-                        .on_click({
-                            let backend_handle = data.backend_handle.clone();
-                            move |_, _, _| {
-                                backend_handle.send(MessageToBackend::KillInstance { id });
-                            }
-                        }))
-                    .child(Button::new("start_again")
-                        .success()
-                        .icon(PandoraIcon::Play)
-                        .on_click(move |_, window, cx| {
-                            let name = name.clone();
-                            let data = data.clone();
-                            window.open_dialog(cx, move |dialog, _, _| {
-                                dialog.title(t::instance::already_running::title())
-                                    .overlay_closable(false)
-                                    .flex()
-                                    .line_height(rems(1.2))
-                                    .child(t::instance::already_running::body())
-                                    .child(div().h_2())
-                                    .child(t::instance::already_running::body2())
-                                    .footer(h_flex()
-                                        .gap_2()
-                                        .w_full()
-                                        .child(
-                                            Button::new("cancel")
-                                                .label(t::common::cancel())
-                                                .on_click(|_, window, cx| {
-                                                    window.close_dialog(cx);
-                                                }).flex_grow(1.0)
-                                        )
-                                        .child(
-                                            Button::new("ok")
-                                                .success()
-                                                .label(t::instance::already_running::start_anyway())
-                                                .on_click({
-                                                    let name = name.clone();
-                                                    let data = data.clone();
-                                                    move |_, window, cx| {
-                                                        window.close_dialog(cx);
-                                                        root::start_instance(id, name.clone(), None, &data, window, cx);
-                                                    }
-                                                })
-                                        ))
-                            })
-                        })).into_any_element()
+                Button::new("kill_instance")
+                    .danger()
+                    .icon(PandoraIcon::Close)
+                    .label(t::instance::kill_instance())
+                    .on_click({
+                        let backend_handle = data.backend_handle.clone();
+                        move |_, _, _| {
+                            backend_handle.send(MessageToBackend::KillInstance { id });
+                        }
+                    })
+                    .into_any_element()
             },
-        };
+        }
+    };
+
+        let instance_for_settings = self.instance.clone();
+        let data_for_settings = self.data.clone();
+        let settings_button = Button::new("instance_settings")
+            .ghost()
+            .icon(PandoraIcon::Settings)
+            .tooltip(t::settings::title())
+            .on_click(move |_, window, cx| {
+                crate::pages::instance::settings_subpage::open_instance_settings_modal(
+                    &instance_for_settings,
+                    &data_for_settings,
+                    window,
+                    cx,
+                );
+            });
+
+        let dot_minecraft = self.instance.read(cx).dot_minecraft_folder.clone();
+        let open_dot_minecraft_button = Button::new("open_dot_minecraft")
+            .ghost()
+            .icon(PandoraIcon::FolderOpen)
+            .tooltip(t::instance::open_folder())
+            .on_click({
+                let dot_minecraft = dot_minecraft.clone();
+                move |_, window, cx| {
+                    crate::open_folder(&dot_minecraft, window, cx);
+                }
+            });
 
         let instance_header = h_flex()
             .px_4()
@@ -218,17 +231,45 @@ impl Render for InstancePage {
             .child(
                 v_flex()
                     .gap_0p5()
-                    .child(div().text_size(rems(1.25)).font_weight(FontWeight::BOLD).text_color(cx.theme().foreground).child(instance_name))
+                    .child(div().text_size(rems(1.25)).font_weight(FontWeight::BOLD).text_color(cx.theme().foreground).child(instance_name.clone()))
                     .child(
                         h_flex()
-                            .gap_2()
-                            .text_size(rems(0.8125))
-                            .text_color(cx.theme().muted_foreground)
-                            .child(format!("{loader_str} {mc_ver}"))
+                            .gap_1p5()
+                            .items_center()
+                            .child(
+                                div()
+                                    .px_2()
+                                    .py_0p5()
+                                    .rounded_none()
+                                    .bg(rgb(0x111724))
+                                    .border_1()
+                                    .border_color(rgb(0x1e2a40))
+                                    .text_size(px(11.0))
+                                    .font_semibold()
+                                    .text_color(rgb(0x00e5ff))
+                                    .child(loader_str)
+                            )
+                            .child(
+                                div()
+                                    .px_2()
+                                    .py_0p5()
+                                    .rounded_none()
+                                    .bg(rgb(0x111724))
+                                    .border_1()
+                                    .border_color(rgb(0x1e2a40))
+                                    .text_size(px(11.0))
+                                    .font_medium()
+                                    .text_color(rgb(0x94a3b8))
+                                    .child(mc_ver.to_string())
+                            )
                     )
             )
             .child(div().flex_1())
-            .child(play_button);
+            .child(play_button)
+            .child(settings_button)
+            .child(open_dot_minecraft_button);
+
+
 
         v_flex()
             .size_full()
@@ -244,7 +285,6 @@ impl Render for InstancePage {
                     .when(show_shader_tab, |this| {
                         this.child(Tab::new().label(t::instance::content::shaders()))
                     })
-                    .child(Tab::new().label(t::settings::title()))
                     .when(show_live_game_output_bool, |this| {
                         this.child(Tab::new().label(t::instance::live_game_output()))
                     })
@@ -255,20 +295,17 @@ impl Render for InstancePage {
                             2 => InstanceSubpageType::ResourcePacks,
                             3 => if show_shader_tab {
                                 InstanceSubpageType::Shaders
+                            } else if show_live_game_output_bool {
+                                InstanceSubpageType::LiveGameOutput
                             } else {
-                                InstanceSubpageType::Settings
+                                return;
                             },
                             4 => {
-                                if show_shader_tab {
-                                    InstanceSubpageType::Settings
-                                } else if show_live_game_output_bool {
+                                if show_shader_tab && show_live_game_output_bool {
                                     InstanceSubpageType::LiveGameOutput
                                 } else {
                                     return;
                                 }
-                            },
-                            5 => {
-                                InstanceSubpageType::LiveGameOutput
                             },
                             _ => {
                                 return;
@@ -279,9 +316,10 @@ impl Render for InstancePage {
             )
             .child(
                 div()
+                    .w_full()
                     .flex_1()
                     .min_h_0()
-                    .size_full()
+                    .overflow_hidden()
                     .relative()
                     .with_animation(
                         ("instance_tab", selected_index),
@@ -330,8 +368,8 @@ impl InstanceSubpageType {
             InstanceSubpageType::Shaders => InstanceSubpage::Shaders(cx.new(|cx| {
                 InstanceContentSubpage::new(instance, ContentType::Shaders, data, backend_handle, window, cx)
             })),
-            InstanceSubpageType::Settings => InstanceSubpage::Settings(cx.new(|cx| {
-                InstanceSettingsSubpage::new(instance, data, backend_handle, window, cx)
+            InstanceSubpageType::Settings => InstanceSubpage::Mods(cx.new(|cx| {
+                InstanceContentSubpage::new(instance, ContentType::Mods, data, backend_handle, window, cx)
             })),
             InstanceSubpageType::LiveGameOutput => {
                 if let Some(game_output) = instance.read(cx).live_game_output.clone() {

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use bridge::{instance::InstanceStatus, message::MessageToBackend};
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme, Icon, Sizable, StyledExt, button::{Button, ButtonVariants}, h_flex, menu::{DropdownMenu, PopupMenuItem}, separator::Separator, table::{Column, ColumnSort, TableDelegate, TableState}, v_flex
+    ActiveTheme, Disableable, Sizable, StyledExt, button::{Button, ButtonCustomVariant, ButtonVariants}, h_flex, menu::{DropdownMenu, PopupMenuItem}, separator::Separator, table::{Column, ColumnSort, TableDelegate, TableState}, v_flex
 };
 use indexmap::IndexMap;
 
@@ -16,6 +16,8 @@ use crate::{
 pub struct InstanceList {
     columns: Vec<Column>,
     items: Vec<InstanceEntry>,
+    pub search_query: String,
+    pub filtered_indices: Vec<usize>,
     reorderable_state: Entity<ReorderableState>,
     data: DataEntities,
     _instance_added_subscription: Subscription,
@@ -26,7 +28,7 @@ pub struct InstanceList {
 impl InstanceList {
     pub fn create_table(data: &DataEntities, window: &mut Window, cx: &mut App) -> Entity<TableState<Self>> {
         let instances = data.instances.clone();
-        let items = instances.read(cx).entries.values().filter_map(|i| {
+        let items: Vec<InstanceEntry> = instances.read(cx).entries.values().filter_map(|i| {
             let entry = i.read(cx).clone();
             if entry.name == schema::quickplay::INSTANCE_NAME {
                 None
@@ -34,23 +36,27 @@ impl InstanceList {
                 Some(entry)
             }
         }).collect();
+        let filtered_indices = (0..items.len()).collect();
         cx.new(|cx| {
             let _instance_added_subscription = cx.subscribe::<_, InstanceAddedEvent>(&instances, |table: &mut TableState<InstanceList>, _, event, cx| {
                 if event.instance.name == schema::quickplay::INSTANCE_NAME {
                     return;
                 }
                 table.delegate_mut().items.insert(0, event.instance.clone());
+                table.delegate_mut().update_filtered();
                 cx.notify();
             });
             let _instance_removed_subscription = cx.subscribe::<_, InstanceRemovedEvent>(&instances, |table, _, event, cx| {
                 table.delegate_mut().items.retain(|instance| {
                     instance.id != event.id
                 });
+                table.delegate_mut().update_filtered();
                 cx.notify();
             });
             let _instance_modified_subscription = cx.subscribe::<_, InstanceModifiedEvent>(&instances, |table, _, event, cx| {
                 if let Some(entry) = table.delegate_mut().items.iter_mut().find(|entry| entry.id == event.instance.id) {
                     *entry = event.instance.clone();
+                    table.delegate_mut().update_filtered();
                     cx.notify();
                 }
             });
@@ -77,6 +83,8 @@ impl InstanceList {
                         .resizable(true),
                 ],
                 items,
+                search_query: String::new(),
+                filtered_indices,
                 reorderable_state: ReorderableState::new(window, cx),
                 data: data.clone(),
                 _instance_added_subscription,
@@ -87,13 +95,31 @@ impl InstanceList {
         })
     }
 
+    pub fn update_filtered(&mut self) {
+        let q = self.search_query.to_lowercase();
+        self.filtered_indices = self.items.iter().enumerate().filter_map(|(ix, item)| {
+            if q.is_empty() || item.name.to_lowercase().contains(&q) {
+                Some(ix)
+            } else {
+                None
+            }
+        }).collect();
+    }
+
+    pub fn set_search_query(&mut self, query: String) {
+        self.search_query = query;
+        self.update_filtered();
+    }
+
     pub fn render_cards(&self, cx: &mut App) -> AnyElement {
         let mut by_group = IndexMap::<Option<Arc<str>>, Vec<AnyElement>>::default();
 
-        for item in &self.items {
-            let group = item.configuration.group.clone();
-            let rendered = self.render_card(item, cx);
-            by_group.entry(group).or_default().push(rendered);
+        for &ix in &self.filtered_indices {
+            if let Some(item) = self.items.get(ix) {
+                let group = item.configuration.group.clone();
+                let rendered = self.render_card(item, cx);
+                by_group.entry(group).or_default().push(rendered);
+            }
         }
 
         let size = Size::new(
@@ -101,7 +127,7 @@ impl InstanceList {
             gpui::AvailableSpace::MinContent
         );
         if by_group.len() == 1 {
-            ResponsiveGrid::new(size).size_full().gap_4().children(by_group.into_iter().next().unwrap().1).into_any_element()
+            ResponsiveGrid::new(size).w_full().gap(px(14.0)).children(by_group.into_iter().next().unwrap().1).into_any_element()
         } else {
             let size_without_no_group = if by_group.contains_key(&None) {
                 by_group.len() - 1
@@ -189,9 +215,10 @@ impl InstanceList {
                 .when_some(drag_info, |this, drag_info| {
                     this.child(drag_info.create_grip(cx, {
                         let group_name = group_name.clone();
-                        move |_: &ReorderableDragInfo, _, _, cx| {
+                        move |_: &ReorderableDragInfo, pos, _, cx| {
                             cx.new(|_| GroupDragPreview {
-                                name: group_name.clone()
+                                name: group_name.clone(),
+                                start_x: pos.x.as_f32(),
                             })
                         }
                     }))
@@ -222,7 +249,7 @@ impl InstanceList {
                 (group_name, 0x23B40E17).into(),
                 open,
                 move |amount| {
-                    ResponsiveGrid::new(size).size_full().gap_4().children(children).opacity(amount).into_any_element()
+                    ResponsiveGrid::new(size).w_full().gap(px(14.0)).children(children).opacity(amount).into_any_element()
                 }
             ))
             .into_any_element()
@@ -230,22 +257,51 @@ impl InstanceList {
 
     fn render_card(&self, item: &InstanceEntry, cx: &mut App) -> AnyElement {
         let index = item.id.index;
-        let loader_and_version = format!(
-            "{} {}",
-            item.configuration.loader.pretty_name(),
-            item.configuration.minecraft_version.as_str(),
-        );
 
-        let icon_tile = crate::component::instance_icon::render_instance_tile(
+        let active_task = self.data.tasks.read(cx).snapshots().into_iter().find(|t| !t.is_finished && (t.id == Some(item.id) || t.name == item.name));
+        let download_pct = active_task.as_ref().map(|t| {
+            if t.total > 0 {
+                (t.count as f32 / t.total as f32).clamp(0.01, 1.0)
+            } else {
+                0.08
+            }
+        });
+
+        let icon_tile = crate::component::instance_icon::render_instance_tile_with_download(
             item.icon.clone(),
             &item.name,
             item.configuration.instance_fallback_icon.as_deref(),
-            100.0,
-            16.0,
+            80.0,
+            18.0,
+            download_pct,
             cx,
         );
 
-        let play_button = render_play_button(item, index, self.data.clone());
+        let play_button = if let Some(pct) = download_pct {
+            let pct_int = (pct * 100.0) as u32;
+            h_flex()
+                .w_full()
+                .h(px(28.0))
+                .items_center()
+                .justify_center()
+                .gap_1p5()
+                .text_xs()
+                .font_medium()
+                .text_color(rgb(0x94a3b8))
+                .child(
+                    div()
+                        .size(px(14.0))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .text_color(rgb(0x00e5ff))
+                        .child(PandoraIcon::Download)
+                )
+                .child(format!("Installing... {}%", pct_int))
+                .into_any_element()
+        } else {
+            render_play_button(item, index, self.data.clone(), cx).w_full().small().into_any_element()
+        };
 
         let menu = Button::new(("menu", index))
             .ghost()
@@ -288,14 +344,16 @@ impl InstanceList {
             .id(("instance_card", index))
             .flex_1()
             .p_3()
-            .gap_2p5()
+            .gap_2()
             .w_full()
-            .min_w(px(200.0))
+            .min_w(px(180.0))
+            .max_w(px(260.0))
+            .bg(theme.popover)
             .border_1()
             .border_color(theme.border)
-            .rounded(theme.radius_lg)
+            .rounded_none()
             .cursor_pointer()
-            .hover(move |style| style.bg(theme.secondary.opacity(0.45)).border_color(theme.info.opacity(0.55)))
+            .hover(move |style| style.bg(rgb(0x131926)).border_color(rgb(0x00f0ff)).shadow_lg())
             .on_click({
                 let name = card_instance_name.clone();
                 move |_, window, cx| {
@@ -320,28 +378,53 @@ impl InstanceList {
                     .w_full()
                     .items_center()
                     .text_center()
-                    .gap_0p5()
+                    .gap_1()
                     .child(
                         div()
                             .font_bold()
                             .text_base()
+                            .text_color(rgb(0xffffff))
                             .truncate()
                             .w_full()
                             .child(item.name.clone())
                     )
                     .child(
-                        div()
-                            .text_xs()
-                            .text_color(theme.muted_foreground)
-                            .truncate()
-                            .w_full()
-                            .child(loader_and_version)
+                        h_flex()
+                            .items_center()
+                            .justify_center()
+                            .gap_1p5()
+                            .child(
+                                div()
+                                    .px_1p5()
+                                    .py_0p5()
+                                    .rounded_none()
+                                    .bg(rgb(0x111724))
+                                    .border_1()
+                                    .border_color(rgb(0x1e2a40))
+                                    .text_size(px(10.5))
+                                    .font_semibold()
+                                    .text_color(rgb(0x00e5ff))
+                                    .child(item.configuration.loader.pretty_name())
+                            )
+                            .child(
+                                div()
+                                    .px_1p5()
+                                    .py_0p5()
+                                    .rounded_none()
+                                    .bg(rgb(0x111724))
+                                    .border_1()
+                                    .border_color(rgb(0x1e2a40))
+                                    .text_size(px(10.5))
+                                    .font_medium()
+                                    .text_color(rgb(0x94a3b8))
+                                    .child(item.configuration.minecraft_version.to_string())
+                            )
                     )
             )
             .child(
                 h_flex()
                     .w_full()
-                    .child(play_button.w_full().small())
+                    .child(play_button)
             )
             .into_any_element()
     }
@@ -353,7 +436,7 @@ impl TableDelegate for InstanceList {
     }
 
     fn rows_count(&self, _cx: &App) -> usize {
-        self.items.len()
+        self.filtered_indices.len()
     }
 
     fn column(&self, col_ix: usize, _cx: &App) -> gpui_component::table::Column {
@@ -380,16 +463,18 @@ impl TableDelegate for InstanceList {
                 _ => {},
             }
         }
+        self.update_filtered();
     }
 
     fn render_td(&mut self, row_ix: usize, col_ix: usize, _window: &mut Window, _cx: &mut Context<TableState<Self>>) -> impl IntoElement {
-        let item = &self.items[row_ix];
+        let real_ix = self.filtered_indices.get(row_ix).copied().unwrap_or(row_ix);
+        let item = &self.items[real_ix];
         if let Some(col) = self.columns.get(col_ix) {
             match col.key.as_ref() {
                 "name" => item.name.clone().into_any_element(),
                 "version" => item.configuration.minecraft_version.as_str().into_any_element(),
                 "controls" => {
-                    let play_button = render_play_button(item, row_ix, self.data.clone());
+                    let play_button = render_play_button(item, real_ix, self.data.clone(), _cx);
 
                     h_flex()
                         .size_full()
@@ -406,13 +491,30 @@ impl TableDelegate for InstanceList {
     }
 }
 
-fn render_play_button(item: &InstanceEntry, index: usize, data: DataEntities) -> Button {
+fn render_play_button(item: &InstanceEntry, index: usize, data: DataEntities, cx: &App) -> Button {
     let name = item.name.clone();
     let id = item.id;
+
+    let custom_play = ButtonCustomVariant::new(cx)
+        .color(rgb(0x04242e).into())
+        .foreground(rgb(0x00f0ff).into())
+        .hover(rgb(0x063e4d).into())
+        .active(rgb(0x031c24).into());
+
+    if data.tasks.read(cx).is_active(id) {
+        return Button::new(("installing", index))
+            .custom(custom_play)
+            .icon(PandoraIcon::Loader)
+            .label("Installing...")
+            .disabled(true);
+    }
+
     match item.status {
         InstanceStatus::NotRunning => {
             Button::new(("start_instance", index))
-                .success()
+                .custom(custom_play)
+                .border_1()
+                .border_color(rgb(0x00e5ff))
                 .icon(PandoraIcon::Play)
                 .label("Play")
                 .on_click(
@@ -449,6 +551,7 @@ fn render_play_button(item: &InstanceEntry, index: usize, data: DataEntities) ->
 
 pub struct GroupDragPreview {
     pub name: SharedString,
+    pub start_x: f32,
 }
 
 impl Render for GroupDragPreview {
@@ -463,7 +566,7 @@ impl Render for GroupDragPreview {
                     .py_2()
                     .gap_2()
                     .items_center()
-                    .rounded(cx.theme().radius)
+                    .rounded_none()
                     .border_1()
                     .border_color(cx.theme().border)
                     .bg(cx.theme().popover)
@@ -491,7 +594,7 @@ impl Render for GroupDragPreview {
                             .text_xs()
                             .px_1p5()
                             .py_0p5()
-                            .rounded_sm()
+                            .rounded_none()
                             .bg(cx.theme().muted)
                             .text_color(cx.theme().muted_foreground)
                             .child("Group")

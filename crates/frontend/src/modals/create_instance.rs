@@ -7,12 +7,13 @@ use gpui_component::{
 };
 use schema::{loader::Loader, version_manifest::{MinecraftVersionManifest, MinecraftVersionType}};
 
-use crate::{entity::{instance::InstanceEntries, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult, FrontendMetadataState}}, icon::PandoraIcon, interface_config::InterfaceConfig, pages::instances_page::VersionList, png_render_cache};
+use crate::{entity::{instance::InstanceEntries, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult, FrontendMetadataState}, task_manager::TaskManager}, icon::PandoraIcon, interface_config::InterfaceConfig, pages::instances_page::VersionList, png_render_cache};
 
 struct CreateInstanceModalState {
     metadata: Entity<FrontendMetadata>,
     versions: Entity<FrontendMetadataState>,
     backend_handle: BackendHandle,
+    tasks: Entity<TaskManager>,
     minecraft_version_dropdown: Entity<SelectState<VersionList>>,
     name_input_state: Entity<InputState>,
     selected_loader: Loader,
@@ -29,7 +30,7 @@ struct CreateInstanceModalState {
 }
 
 impl CreateInstanceModalState {
-    pub fn new(metadata: Entity<FrontendMetadata>, instances: Entity<InstanceEntries>, backend_handle: BackendHandle, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(metadata: Entity<FrontendMetadata>, instances: Entity<InstanceEntries>, tasks: Entity<TaskManager>, backend_handle: BackendHandle, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let instance_names: Arc<[SharedString]> =
             instances.read(cx).entries.iter().map(|(_, v)| v.read(cx).name.clone()).collect();
 
@@ -71,6 +72,7 @@ impl CreateInstanceModalState {
             metadata,
             versions,
             backend_handle,
+            tasks,
             minecraft_version_dropdown,
             name_input_state,
             selected_loader: Loader::Vanilla,
@@ -212,6 +214,9 @@ impl CreateInstanceModalState {
                     }));
 
             return modal
+                .w(px(540.0))
+                .close_button(true)
+                .overlay_closable(true)
                 .title(t::instance::create())
                 .child(v_flex().gap_3().child(error_widget).child(reload_button))
                 .footer(Button::new("ok").label(t::common::ok()).on_click(|_, window, cx| window.close_dialog(cx)));
@@ -227,8 +232,8 @@ impl CreateInstanceModalState {
                 .disabled(true)
                 .placeholder(t::instance::versions_loading::game_versions())
                 .search_placeholder(t::common::search());
-            show_snapshots_button = Skeleton::new().w_full().min_h_4().max_h_4().rounded_md().into_any_element();
-            loader_button_group = Skeleton::new().w_full().min_h_8().max_h_8().rounded_md().into_any_element();
+            show_snapshots_button = Skeleton::new().w_full().min_h_4().max_h_4().rounded_none().into_any_element();
+            loader_button_group = Skeleton::new().w_full().min_h_8().max_h_8().rounded_none().into_any_element();
         } else {
             version_dropdown = Select::new(&self.minecraft_version_dropdown)
                 .title_prefix(format!("{}: ", t::instance::mc_version()))
@@ -302,7 +307,7 @@ impl CreateInstanceModalState {
                     EmbeddedOrRaw::Raw(data) => {
                         let transform = png_render_cache::ImageTransformation::Resize { width: 32, height: 32 };
                         png_render_cache::render_with_transform(data, transform, cx)
-                            .rounded(cx.theme().radius).size_8().min_w_8().min_h_8().into_any_element()
+                            .rounded_none().size_8().min_w_8().min_h_8().into_any_element()
                     },
                 };
 
@@ -341,7 +346,9 @@ impl CreateInstanceModalState {
 
         let name_is_invalid = self.name_invalid;
         modal
-            .overlay_closable(false)
+            .w(px(540.0))
+            .close_button(true)
+            .overlay_closable(true)
             .title(t::instance::create())
             .child(content)
             .when(name_is_invalid, |modal| {
@@ -374,6 +381,15 @@ impl CreateInstanceModalState {
                                 crate::modals::select_icon::get_random_modrinth_icon()
                             };
 
+                            let modal_action = bridge::modal_action::ModalAction::default();
+                            let raw_icon = match &icon {
+                                Some(EmbeddedOrRaw::Raw(bytes)) => Some(bytes.clone()),
+                                _ => None,
+                            };
+                            this.tasks.update(cx, |tasks, cx| {
+                                tasks.register_pending_creation(name.to_string(), raw_icon, modal_action, false, cx);
+                            });
+
                             this.backend_handle.send(MessageToBackend::CreateInstance {
                                 name: name.as_str().into(),
                                 version: selected_version.as_str().into(),
@@ -389,12 +405,14 @@ impl CreateInstanceModalState {
 pub fn open_create_instance(
     metadata: Entity<FrontendMetadata>,
     instances: Entity<InstanceEntries>,
+    tasks: Entity<TaskManager>,
     backend_handle: BackendHandle,
     window: &mut Window,
     cx: &mut App,
 ) {
+    crate::root::capture_backdrop_blur(window, cx);
     let state = cx.new(|cx| {
-        CreateInstanceModalState::new(metadata, instances, backend_handle, window, cx)
+        CreateInstanceModalState::new(metadata, instances, tasks, backend_handle, window, cx)
     });
 
     window.open_dialog(cx, move |modal, window, cx| {

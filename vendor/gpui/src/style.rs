@@ -703,10 +703,8 @@ impl Style {
         }
 
         let rem_size = window.rem_size();
-        let corner_radii = self
-            .corner_radii
-            .to_pixels(rem_size)
-            .clamp_radii_for_quad_size(bounds.size);
+        let _ = rem_size;
+        let corner_radii = Corners::default();
 
         window.paint_drop_shadows(bounds, corner_radii, &self.box_shadow);
 

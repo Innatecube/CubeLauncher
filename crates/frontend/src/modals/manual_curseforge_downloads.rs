@@ -213,7 +213,7 @@ impl ManualCurseforgeDownloadsDialog {
             })
         }).track_scroll(&self.scroll_handle).size_full();
 
-        let elements = div().border_1().rounded(cx.theme().radius_lg).border_color(cx.theme().border)
+        let elements = div().border_1().rounded_none().border_color(cx.theme().border)
             .w_full()
             .h(list_height)
             .child(uniform_list)

@@ -2,28 +2,83 @@
 <html style="display: block; width: 100%; height: 100%">
     <head>
         <meta charset="utf-8" />
-        <title>CubeLauncher</title>
+        <title>CubeLauncher - Microsoft Authentication</title>
         <meta
             name="viewport"
             content="width=device-width, initial-scale=1, maximum-scale=1"
         />
+        <style>
+            * { box-sizing: border-box; }
+            body {
+                margin: 0;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                min-height: 100vh;
+                background-color: #0b1417;
+                background-image: radial-gradient(circle at 50% 30%, rgba(0, 240, 255, 0.12), transparent 70%);
+                color: #f1f7f8;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            }
+            .card {
+                background: #111e22;
+                border: 1px solid #1a3339;
+                border-radius: 0px;
+                padding: 48px 40px;
+                max-width: 480px;
+                width: 90%;
+                text-align: center;
+                box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+            }
+            .brand {
+                font-size: 13px;
+                font-weight: 700;
+                letter-spacing: 2px;
+                text-transform: uppercase;
+                color: #00f0ff;
+                margin-bottom: 16px;
+            }
+            h1 {
+                margin: 0 0 12px 0;
+                font-size: 24px;
+                font-weight: 700;
+                color: #ffffff;
+            }
+            p {
+                margin: 0 0 24px 0;
+                font-size: 15px;
+                color: #8da4a8;
+                line-height: 1.5;
+            }
+            .btn {
+                display: inline-block;
+                padding: 10px 24px;
+                background: #00f0ff;
+                color: #0b1417;
+                font-size: 14px;
+                font-weight: 700;
+                text-decoration: none;
+                border: none;
+                cursor: pointer;
+                border-radius: 0px;
+                transition: background 0.15s;
+            }
+            .btn:hover {
+                background: #5cf5ff;
+            }
+        </style>
     </head>
-    <body
-        style="
-            display: grid;
-            width: 100%;
-            height: 100%;
-            margin: 0;
-            background: #0a0a0a;
-            color: #fafafa;
-            text-align: center;
-            font-family:
-                &quot;Segoe UI&quot;, Tahoma, Geneva, Verdana, sans-serif;
-        "
-    >
-        <div style="margin: auto">
-            <h1>{}</h1>
-            <h2>{}</h2>
+    <body>
+        <div class="card">
+            <div class="brand">CUBELAUNCHER</div>
+            <h1>{{MAIN_MESSAGE}}</h1>
+            <p>{{SECONDARY_MESSAGE}}</p>
+            <button class="btn" onclick="window.close()">Close Window</button>
         </div>
+        <script>
+            setTimeout(function() {
+                window.close();
+            }, 3000);
+        </script>
     </body>
 </html>

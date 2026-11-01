@@ -855,13 +855,17 @@ impl Scrollbar {
     }
 
     fn resolved_viewport_bounds(&self, layout_bounds: Bounds<Pixels>) -> Bounds<Pixels> {
-        self.viewport_bounds.unwrap_or_else(|| {
+        let mut b = self.viewport_bounds.unwrap_or_else(|| {
             if self.use_layout_bounds {
                 layout_bounds
             } else {
                 self.scroll_handle.viewport_bounds()
             }
-        })
+        });
+        if self.axis.is_vertical() || self.axis.is_both() {
+            b.size.width += px(6.0);
+        }
+        b
     }
 
     /// Set scrollbar axis.

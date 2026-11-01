@@ -906,7 +906,11 @@ impl PlatformWindow for WindowsWindow {
     fn zoom(&self) {
         unsafe {
             if IsWindowVisible(self.0.hwnd).as_bool() {
-                ShowWindowAsync(self.0.hwnd, SW_MAXIMIZE).ok().log_err();
+                if self.is_maximized() {
+                    ShowWindowAsync(self.0.hwnd, SW_RESTORE).ok().log_err();
+                } else {
+                    ShowWindowAsync(self.0.hwnd, SW_MAXIMIZE).ok().log_err();
+                }
             } else if let Some(mut status) = self.state.initial_placement.take() {
                 status.state = WindowOpenState::Maximized;
                 self.state.initial_placement.set(Some(status));
@@ -991,7 +995,6 @@ impl PlatformWindow for WindowsWindow {
             .log_err();
     }
 
-    #[cfg(any(test, feature = "test-support"))]
     fn render_to_image(&self, scene: &Scene) -> anyhow::Result<image::RgbaImage> {
         self.state
             .renderer

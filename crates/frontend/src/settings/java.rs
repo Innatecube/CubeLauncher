@@ -1,9 +1,11 @@
 use std::rc::Rc;
 
-use gpui::*;
+use gpui::{prelude::*, *};
 use gpui_component::{
-    Disableable,
-    input::{Input, InputEvent, InputState, NumberInput, NumberInputEvent, StepAction},
+    ActiveTheme, Disableable, StyledExt,
+    h_flex, v_flex,
+    input::{Input, InputEvent, InputState},
+    slider::{Slider, SliderEvent, SliderState},
     switch::Switch,
 };
 use schema::instance::InstanceJvmBinaryConfiguration;
@@ -12,6 +14,36 @@ use crate::{
     component::path_label::PathLabel,
     settings::{SettingGroup, SettingItem, SettingItemWidget, SettingPage},
 };
+
+pub fn get_system_ram_mb() -> u32 {
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
+        let mut status = MEMORYSTATUSEX {
+            dwLength: std::mem::size_of::<MEMORYSTATUSEX>() as u32,
+            ..Default::default()
+        };
+        if unsafe { GlobalMemoryStatusEx(&mut status) }.is_ok() {
+            let mb = (status.ullTotalPhys / (1024 * 1024)) as u32;
+            if mb > 0 {
+                return mb.max(4096);
+            }
+        }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(meminfo) = std::fs::read_to_string("/proc/meminfo") {
+            for line in meminfo.lines() {
+                if let Some(rest) = line.strip_prefix("MemTotal:") {
+                    if let Some(kb) = rest.split_whitespace().next().and_then(|s| s.parse::<u64>().ok()) {
+                        return ((kb / 1024) as u32).max(4096);
+                    }
+                }
+            }
+        }
+    }
+    16384
+}
 
 pub(super) fn create_page() -> SettingPage {
     SettingPage {
@@ -45,15 +77,9 @@ pub(super) fn create_page() -> SettingPage {
                         ..Default::default()
                     },
                     SettingItem {
-                        title: t::settings::java::defaults::memory_min,
-                        description: t::settings::java::defaults::memory_min_desc,
-                        widget: create_memory_min_widget(),
-                        ..Default::default()
-                    },
-                    SettingItem {
                         title: t::settings::java::defaults::memory_max,
                         description: t::settings::java::defaults::memory_max_desc,
-                        widget: create_memory_max_widget(),
+                        widget: create_global_memory_slider_widget(),
                         ..Default::default()
                     },
                     SettingItem {
@@ -125,119 +151,149 @@ pub(super) fn create_page() -> SettingPage {
     }
 }
 
-fn create_memory_min_widget() -> SettingItemWidget {
+fn create_global_memory_slider_widget() -> SettingItemWidget {
     SettingItemWidget::Backend(Rc::new(|backend, window, cx| {
-        let memory = backend.memory.clone().unwrap_or_default();
-        let mut created = false;
-        let state = window.use_keyed_state("default-memory-min", cx, |window, cx| {
-            created = true;
-            let mut state = InputState::new(window, cx);
-            state.set_value(memory.min.to_string(), window, cx);
-            state
+        let memory = backend.memory.clone().unwrap_or(schema::instance::InstanceMemoryConfiguration {
+            enabled: true,
+            min: 1024,
+            max: 4096,
         });
+        let enabled = memory.enabled;
+        let total_ram_mb = get_system_ram_mb().max(2048);
+        let current_max = if memory.max >= 1024 { memory.max.min(total_ram_mb) } else { 4096.min(total_ram_mb) };
+
+        let mut created = false;
+        let slider_state = window.use_keyed_state("default-memory-slider", cx, |_, _| {
+            created = true;
+            SliderState::new()
+                .max(total_ram_mb as f32)
+                .min(1024.0)
+                .step(256.0)
+                .default_value(current_max as f32)
+        });
+
         if created {
-            cx.subscribe_in(&state, window, |_, state, event: &NumberInputEvent, window, cx| {
-                apply_memory_step(state, event, window, cx);
-            }).detach();
-            cx.subscribe(&state, |root, state, event: &InputEvent, cx| {
-                if !matches!(event, InputEvent::Change) {
+            cx.subscribe(&slider_state, |root, _state, event: &SliderEvent, cx| {
+                let SliderEvent::Change(change) = event else { return; };
+                let val = (change.start() / 256.0).round() * 256.0;
+                let new_max = (val as u32).clamp(1024, 131072);
+
+                let Some(backend) = root.backend_config().cloned() else { return; };
+                let mut mem = backend.memory.unwrap_or(schema::instance::InstanceMemoryConfiguration {
+                    enabled: true,
+                    min: 1024,
+                    max: 4096,
+                });
+                if mem.max == new_max {
                     return;
                 }
-                let Some(backend) = root.backend_config().cloned() else {
-                    return;
-                };
-                let min = state.read(cx).value().parse::<u32>().unwrap_or(0);
-                let mut memory = backend.memory.unwrap_or_default();
-                if memory.min == min {
-                    return;
-                }
-                memory.min = min;
+                mem.max = new_max;
+                mem.enabled = true;
                 root.set_launch_defaults(
-                    Some(memory),
+                    Some(mem),
                     backend.jvm_flags.clone(),
                     backend.jvm_binary.clone(),
                     cx,
                 );
             }).detach();
         } else {
-            let state_read = state.read(cx);
-            if state_read.value().parse::<u32>() != Ok(memory.min)
-                && !state_read.focus_handle(cx).is_focused(window)
-            {
-                state.update(cx, |state, cx| {
-                    state.set_value(memory.min.to_string(), window, cx);
+            let state_val = slider_state.read(cx).value().start();
+            if (state_val - current_max as f32).abs() > 10.0 {
+                slider_state.update(cx, |slider, cx| {
+                    slider.set_value(current_max as f32, window, cx);
                 });
             }
         }
-        NumberInput::new(&state).w(px(200.0)).disabled(!memory.enabled).into_any_element()
-    }))
-}
 
-fn create_memory_max_widget() -> SettingItemWidget {
-    SettingItemWidget::Backend(Rc::new(|backend, window, cx| {
-        let memory = backend.memory.clone().unwrap_or_default();
-        let mut created = false;
-        let state = window.use_keyed_state("default-memory-max", cx, |window, cx| {
-            created = true;
-            let mut state = InputState::new(window, cx);
-            state.set_value(memory.max.to_string(), window, cx);
-            state
-        });
-        if created {
-            cx.subscribe_in(&state, window, |_, state, event: &NumberInputEvent, window, cx| {
-                apply_memory_step(state, event, window, cx);
-            }).detach();
-            cx.subscribe(&state, |root, state, event: &InputEvent, cx| {
-                if !matches!(event, InputEvent::Change) {
-                    return;
-                }
-                let Some(backend) = root.backend_config().cloned() else {
-                    return;
-                };
-                let max = state.read(cx).value().parse::<u32>().unwrap_or(0);
-                let mut memory = backend.memory.unwrap_or_default();
-                if memory.max == max {
-                    return;
-                }
-                memory.max = max;
-                root.set_launch_defaults(
-                    Some(memory),
-                    backend.jvm_flags.clone(),
-                    backend.jvm_binary.clone(),
-                    cx,
-                );
-            }).detach();
-        } else {
-            let state_read = state.read(cx);
-            if state_read.value().parse::<u32>() != Ok(memory.max)
-                && !state_read.focus_handle(cx).is_focused(window)
-            {
-                state.update(cx, |state, cx| {
-                    state.set_value(memory.max.to_string(), window, cx);
-                });
-            }
-        }
-        NumberInput::new(&state).w(px(200.0)).disabled(!memory.enabled).into_any_element()
+        v_flex()
+            .w(px(320.0))
+            .gap_2()
+            .px(px(8.0))
+            .child(
+                h_flex()
+                    .justify_between()
+                    .items_center()
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_semibold()
+                            .text_color(if enabled { cx.theme().primary } else { cx.theme().muted_foreground })
+                            .child(format!("{:.1} GB ({} MB)", current_max as f32 / 1024.0, current_max))
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(format!("System: {:.0} GB", total_ram_mb as f32 / 1024.0))
+                    )
+            )
+            .child(
+                Slider::new(&slider_state).disabled(!enabled)
+            )
+            .child(
+                h_flex()
+                    .justify_between()
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .child("1.0 GB")
+                    .child(format!("{:.0} GB", total_ram_mb as f32 / 1024.0))
+            )
+            .child(
+                h_flex()
+                    .gap_1p5()
+                    .pt_1()
+                    .children(
+                        [2048, 4096, 6144, 8192, 12288, 16384]
+                            .into_iter()
+                            .filter(|&mb| mb <= total_ram_mb)
+                            .map(|mb| {
+                                let is_active = (current_max as i32 - mb as i32).abs() < 128;
+                                let slider_state = slider_state.clone();
+                                div()
+                                    .id(("global-ram-preset", mb))
+                                    .px_2()
+                                    .py_0p5()
+                                    .text_xs()
+                                    .font_medium()
+                                    .rounded_none()
+                                    .cursor_pointer()
+                                    .when_else(is_active, |this| {
+                                        this.bg(cx.theme().primary.opacity(0.2))
+                                            .text_color(cx.theme().primary)
+                                            .border_1()
+                                            .border_color(cx.theme().primary)
+                                    }, |this| {
+                                        this.bg(cx.theme().secondary)
+                                            .text_color(cx.theme().foreground)
+                                            .border_1()
+                                            .border_color(cx.theme().border)
+                                            .hover(|h| h.bg(cx.theme().secondary_hover))
+                                    })
+                                    .child(format!("{} GB", mb / 1024))
+                                    .on_click(cx.listener(move |root, _, window, cx| {
+                                        slider_state.update(cx, |slider, cx| {
+                                            slider.set_value(mb as f32, window, cx);
+                                        });
+                                        let Some(backend) = root.backend_config().cloned() else { return; };
+                                        let mut mem = backend.memory.unwrap_or(schema::instance::InstanceMemoryConfiguration {
+                                            enabled: true,
+                                            min: 1024,
+                                            max: 4096,
+                                        });
+                                        mem.max = mb;
+                                        mem.enabled = true;
+                                        root.set_launch_defaults(
+                                            Some(mem),
+                                            backend.jvm_flags.clone(),
+                                            backend.jvm_binary.clone(),
+                                            cx,
+                                        );
+                                    }))
+                            })
+                    )
+            )
+            .into_any_element()
     }))
-}
-
-fn apply_memory_step(
-    state: &Entity<InputState>,
-    event: &NumberInputEvent,
-    window: &mut Window,
-    cx: &mut App,
-) {
-    let NumberInputEvent::Step(step_action) = event;
-    let Ok(mut value) = state.read(cx).value().parse::<u32>() else {
-        return;
-    };
-    value = match step_action {
-        StepAction::Decrement => value.saturating_div(256).saturating_sub(1).saturating_mul(256).max(128),
-        StepAction::Increment => value.saturating_div(256).saturating_add(1).saturating_mul(256).max(128),
-    };
-    state.update(cx, |input, cx| {
-        input.set_value(value.to_string(), window, cx);
-    });
 }
 
 fn create_jvm_flags_widget() -> SettingItemWidget {

@@ -323,6 +323,9 @@ impl SliderState {
     }
 
     fn update_thumb_pos(&mut self) {
+        if self.min > self.max {
+            return;
+        }
         match self.value {
             SliderValue::Single(value) => {
                 let percentage = self.value_to_percentage(value.clamp(self.min, self.max));

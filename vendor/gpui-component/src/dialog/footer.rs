@@ -3,7 +3,7 @@ use gpui::{
     StatefulInteractiveElement, StyleRefinement, Styled, Window, div, relative,
 };
 
-use crate::{ActiveTheme as _, StyledExt as _, dialog::Confirm, h_flex};
+use crate::{StyledExt as _, dialog::Confirm, h_flex};
 
 /// Footer section of a dialog, typically contains action buttons.
 ///
@@ -42,12 +42,12 @@ impl Styled for DialogFooter {
 }
 
 impl RenderOnce for DialogFooter {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, _: &mut Window, _cx: &mut App) -> impl IntoElement {
         h_flex()
             .gap_2()
             .justify_end()
             .line_height(relative(1.))
-            .rounded_b(cx.theme().radius_lg)
+            .rounded_none()
             .refine_style(&self.style)
             .children(self.children)
     }

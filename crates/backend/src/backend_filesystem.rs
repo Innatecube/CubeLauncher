@@ -344,6 +344,11 @@ impl BackendState {
                         instance.stats.mark_changed(&path);
                         self.send.send(instance.create_modify_message());
                     }
+                } else if file_name == "icon.png" {
+                    if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+                        instance.icon = std::fs::read(&path).ok().map(|v| v.into());
+                        self.send.send(instance.create_modify_message());
+                    }
                 } else if file_name == ".minecraft"
                     && let Some(instance) = self.instance_state.write().instances.get_mut(id)
                 {

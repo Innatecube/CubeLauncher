@@ -1,11 +1,8 @@
 use gpui::{prelude::*, *};
-use gpui_component::{ActiveTheme, Icon};
+use gpui_component::Icon;
 use schema::unique_bytes::UniqueBytes;
 
-use crate::{
-    entity::instance::InstanceEntry,
-    png_render_cache::{self, ImageTransformation},
-};
+use crate::png_render_cache::{self, ImageTransformation};
 
 /// Deterministically picks a vibrant, high-saturation color from Modrinth's palette.
 pub fn get_vibrant_icon_color(seed: &str) -> Hsla {
@@ -57,44 +54,47 @@ pub fn render_instance_tile(
     name: &str,
     fallback_icon: Option<&str>,
     size_px: f32,
-    radius_px: f32,
+    _radius_px: f32,
     cx: &mut App,
 ) -> AnyElement {
-    let bg_color = get_vibrant_icon_color(name);
-    let transform_size = (size_px * 1.5).round().max(64.0) as u32;
+    let transform_size = (size_px * 2.0).round().max(64.0) as u32;
 
-    let icon_element = if let Some(bytes) = icon {
+    let (icon_element, bg_color) = if let Some(bytes) = icon {
         let transform = ImageTransformation::Resize {
             width: transform_size,
             height: transform_size,
         };
-        // 3D icons get ~12% padding inside squircle so drop shadows blend naturally.
-        let img_size = size_px * 0.82;
-        div()
-            .size(px(img_size))
-            .flex()
-            .items_center()
-            .justify_center()
-            .child(
-                png_render_cache::render_with_transform(bytes, transform, cx)
-                    .size(px(img_size))
-                    .rounded(px(radius_px * 0.5))
-            )
-            .into_any_element()
+        (
+            div()
+                .size(px(size_px))
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(
+                    png_render_cache::render_with_transform(bytes, transform, cx)
+                        .size(px(size_px))
+                        .rounded_none()
+                )
+                .into_any_element(),
+            rgba(0x1a1e2680).into(),
+        )
     } else {
         let icon_path = fallback_icon.unwrap_or("icons/box.svg");
         let icon_size = size_px * 0.6;
-        Icon::default()
-            .path(icon_path)
-            .size(px(icon_size))
-            .into_any_element()
+        (
+            Icon::default()
+                .path(icon_path)
+                .size(px(icon_size))
+                .into_any_element(),
+            get_vibrant_icon_color(name),
+        )
     };
 
     div()
         .size(px(size_px))
         .min_size(px(size_px))
         .max_size(px(size_px))
-        .rounded(px(radius_px))
+        .rounded_none()
         .bg(bg_color)
         .flex()
         .items_center()
@@ -113,4 +113,112 @@ pub fn render_sidebar_tile(
     cx: &mut App,
 ) -> AnyElement {
     render_instance_tile(icon, name, fallback_icon, 34.0, 8.0, cx)
+}
+
+fn render_squircle_progress_ring(pct: f32, stroke_width: f32, radius: f32) -> impl IntoElement {
+    canvas(
+        move |bounds: Bounds<Pixels>, _window: &mut Window, _cx: &mut App| {
+            bounds
+        },
+        move |bounds, _prepaint, window: &mut Window, _cx: &mut App| {
+            let inset = stroke_width / 2.0;
+            let x = bounds.origin.x + px(inset);
+            let y = bounds.origin.y + px(inset);
+            let w = (bounds.size.width - px(stroke_width)).max(px(0.0));
+            let h = (bounds.size.height - px(stroke_width)).max(px(0.0));
+            let r = (radius - inset).min(w.as_f32() / 2.0).min(h.as_f32() / 2.0).max(0.0);
+
+            let straight_w = (w - px(r * 2.0)).max(px(0.0));
+            let straight_h = (h - px(r * 2.0)).max(px(0.0));
+            let p_len = (straight_w * 2.0 + straight_h * 2.0 + px(std::f32::consts::TAU * r)).as_f32();
+
+            let build_squircle = || {
+                let mut pb = PathBuilder::stroke(px(stroke_width));
+                pb.move_to(point(x + w / 2.0, y));
+                pb.line_to(point(x + w - px(r), y));
+                pb.arc_to(point(px(r), px(r)), px(0.0), false, true, point(x + w, y + px(r)));
+                pb.line_to(point(x + w, y + h - px(r)));
+                pb.arc_to(point(px(r), px(r)), px(0.0), false, true, point(x + w - px(r), y + h));
+                pb.line_to(point(x + px(r), y + h));
+                pb.arc_to(point(px(r), px(r)), px(0.0), false, true, point(x, y + h - px(r)));
+                pb.line_to(point(x, y + px(r)));
+                pb.arc_to(point(px(r), px(r)), px(0.0), false, true, point(x + px(r), y));
+                pb.line_to(point(x + w / 2.0, y));
+                pb.close();
+                pb
+            };
+
+            // 1. Subtle full background track
+            let bg_pb = build_squircle();
+            if let Ok(path) = bg_pb.build() {
+                window.paint_path(path, rgb(0x00e5ff).opacity(0.18));
+            }
+
+            // 2. Active cyan progress arc along the squircle perimeter
+            if pct > 0.005 {
+                let active_len = p_len * pct.clamp(0.0, 1.0);
+                let gap_len = p_len * 2.0;
+                let fg_pb = build_squircle().dash_array(&[px(active_len), px(gap_len)]);
+                if let Ok(path) = fg_pb.build() {
+                    window.paint_path(path, rgb(0x00e5ff));
+                }
+            }
+        },
+    )
+    .absolute()
+    .size_full()
+}
+
+/// Renders an instance icon tile with an optional glowing cyan downloading progress squircle ring.
+pub fn render_instance_tile_with_download(
+    icon: Option<UniqueBytes>,
+    name: &str,
+    fallback_icon: Option<&str>,
+    size_px: f32,
+    radius_px: f32,
+    download_progress: Option<f32>,
+    cx: &mut App,
+) -> AnyElement {
+    let tile = render_instance_tile(icon, name, fallback_icon, size_px, radius_px, cx);
+    if let Some(pct) = download_progress {
+        div()
+            .relative()
+            .size(px(size_px))
+            .min_size(px(size_px))
+            .max_size(px(size_px))
+            .flex()
+            .items_center()
+            .justify_center()
+            .child(tile)
+            .child(render_squircle_progress_ring(pct, 2.5, radius_px))
+            .into_any_element()
+    } else {
+        tile
+    }
+}
+
+/// Renders a sidebar tile with an optional glowing cyan downloading progress squircle ring.
+pub fn render_sidebar_tile_with_download(
+    icon: Option<UniqueBytes>,
+    name: &str,
+    fallback_icon: Option<&str>,
+    download_progress: Option<f32>,
+    cx: &mut App,
+) -> AnyElement {
+    let tile = render_instance_tile(icon, name, fallback_icon, 34.0, 8.0, cx);
+    if let Some(pct) = download_progress {
+        div()
+            .relative()
+            .size(px(34.0))
+            .min_size(px(34.0))
+            .max_size(px(34.0))
+            .flex()
+            .items_center()
+            .justify_center()
+            .child(tile)
+            .child(render_squircle_progress_ring(pct, 2.0, 8.0))
+            .into_any_element()
+    } else {
+        tile
+    }
 }

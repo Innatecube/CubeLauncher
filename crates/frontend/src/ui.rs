@@ -48,6 +48,7 @@ pub struct LauncherUI {
     _instance_modified_subscription: Subscription,
     _instance_removed_subscription: Subscription,
     _instance_moved_to_top_subscription: Subscription,
+    _tasks_subscription: Subscription,
 }
 
 pub const ICONIZED_SIDEBAR_WIDTH: f32 = 64.0;
@@ -151,21 +152,35 @@ impl LauncherPage {
             controls,
             update: ui.update.clone(),
             send: ui.data.backend_handle.clone(),
+            tasks: ui.data.tasks.clone(),
         };
 
-        if scrollable {
+        let is_flyout_open = ui.data.tasks.read(cx).is_flyout_open;
+        let flyout_element = if is_flyout_open {
+            Some(ui.render_download_flyout(cx))
+        } else {
+            None
+        };
+
+        let content = if scrollable {
             v_flex()
                 .size_full()
                 .child(title_bar)
-                .child(div().flex_1().overflow_hidden().child(
+                .child(div().w_full().flex_1().min_h_0().overflow_hidden().child(
                     v_flex().size_full().overflow_y_scrollbar().child(page),
                 ))
         } else {
             v_flex()
                 .size_full()
                 .child(title_bar)
-                .child(div().flex_1().min_h_0().size_full().child(page))
-        }
+                .child(div().w_full().flex_1().min_h_0().overflow_hidden().child(page))
+        };
+
+        v_flex()
+            .size_full()
+            .relative()
+            .child(content)
+            .children(flyout_element)
     }
 }
 
@@ -198,6 +213,9 @@ impl LauncherUI {
             cx.subscribe::<_, InstanceMovedToTopEvent>(&data.instances, |_, _, _, cx| {
                 cx.notify();
             });
+        let _tasks_subscription = cx.observe(&data.tasks, |_, _, cx| {
+            cx.notify();
+        });
 
         let sidebar_reorderable_state = ReorderableState::new(window, cx);
 
@@ -238,6 +256,7 @@ impl LauncherUI {
             _instance_modified_subscription,
             _instance_removed_subscription,
             _instance_moved_to_top_subscription,
+            _tasks_subscription,
         }
     }
 
@@ -381,6 +400,222 @@ impl LauncherUI {
 
         self.switch_page_without_history(page, page_path, window, cx);
     }
+
+    pub fn render_download_flyout(&self, cx: &mut App) -> AnyElement {
+        let snapshots = self.data.tasks.read(cx).snapshots();
+        let active_snapshots: Vec<_> = snapshots.iter().filter(|s| !s.is_finished && s.is_modpack).cloned().collect();
+        let tasks_entity = self.data.tasks.clone();
+        let right_pos = if cfg!(target_os = "macos") { px(16.0) } else { px(35.0) };
+
+        if active_snapshots.is_empty() {
+            let empty_right = if cfg!(target_os = "macos") { px(16.0) } else { px(70.0) };
+            return div()
+                .id("download-flyout-empty")
+                .occlude()
+                .absolute()
+                .top(px(52.0))
+                .right(empty_right)
+                .w(px(260.0))
+                .bg(rgb(0x0b1e1e))
+                .border_1()
+                .border_color(rgb(0x163232))
+                .rounded_none()
+                .shadow_2xl()
+                .p_4()
+                .on_mouse_down(MouseButton::Left, |_, window, cx| {
+                    window.prevent_default();
+                    cx.stop_propagation();
+                })
+                .on_mouse_down_out(move |_, _, cx| {
+                    tasks_entity.update(cx, |t, cx| t.close_flyout(cx));
+                })
+                .flex()
+                .flex_col()
+                .items_center()
+                .justify_center()
+                .gap_2()
+                .child(div().size_6().text_color(rgb(0x00e5ff)).child(PandoraIcon::CircleCheck))
+                .child(div().text_xs().font_medium().text_color(rgb(0x94a3b8)).child("No active downloads"))
+                .into_any_element();
+        }
+
+        let mut task_cards = Vec::new();
+        for (i, task) in active_snapshots.iter().take(3).enumerate() {
+            let icon_view = if let Some(icon) = &task.icon {
+                let resize = png_render_cache::ImageTransformation::Resize { width: 44, height: 44 };
+                png_render_cache::render_with_transform(icon.clone(), resize, cx)
+                    .size(px(44.0))
+                    .rounded_none()
+                    .into_any_element()
+            } else {
+                crate::component::instance_icon::render_instance_tile(
+                    None,
+                    &task.name,
+                    Some("icons/box.svg"),
+                    44.0,
+                    10.0,
+                    cx,
+                )
+            };
+
+            let raw_pct = if task.total > 0 {
+                (task.count as f32 / task.total as f32).clamp(0.0, 1.0)
+            } else if task.count > 0 {
+                0.15
+            } else {
+                0.05
+            };
+            let pct = if task.is_finished {
+                1.0
+            } else {
+                raw_pct.min(0.98)
+            };
+            let pct_int = (pct * 100.0) as u32;
+
+            let mb_downloaded = task.count as f64 / 1_048_576.0;
+            let mb_total = task.total as f64 / 1_048_576.0;
+            let mb_text = if task.is_finished {
+                "Complete".to_string()
+            } else if task.total > 0 {
+                if task.speed_mb_s > 0.05 {
+                    format!("{:.1} / {:.0} MB • {:.1} MB/s", mb_downloaded, mb_total, task.speed_mb_s)
+                } else {
+                    format!("{:.1} / {:.0} MB", mb_downloaded, mb_total)
+                }
+            } else if task.count > 0 {
+                format!("{:.1} MB", mb_downloaded)
+            } else {
+                task.stage.to_string()
+            };
+
+            let fill_w = (266.0 * pct).clamp(4.0, 266.0);
+
+            if i > 0 {
+                task_cards.push(
+                    div()
+                        .w_full()
+                        .h(px(1.0))
+                        .bg(rgb(0x1e2433))
+                        .my_1()
+                        .into_any_element(),
+                );
+            }
+
+            task_cards.push(
+                h_flex()
+                    .w_full()
+                    .items_center()
+                    .gap_3()
+                    // 44x44 icon
+                    .child(
+                        div()
+                            .size(px(44.0))
+                            .min_w(px(44.0))
+                            .max_w(px(44.0))
+                            .rounded_none()
+                            .overflow_hidden()
+                            .flex_none()
+                            .child(icon_view)
+                    )
+                    // 266px details
+                    .child(
+                        v_flex()
+                            .w(px(266.0))
+                            .min_w(px(266.0))
+                            .max_w(px(266.0))
+                            .gap_1p5()
+                            // Name row
+                            .child(
+                                div()
+                                    .w(px(266.0))
+                                    .text_sm()
+                                    .font_semibold()
+                                    .text_color(rgb(0xf8fafc))
+                                    .truncate()
+                                    .child(task.name.clone())
+                            )
+                            // Stage subtitle
+                            .child(
+                                div()
+                                    .w(px(266.0))
+                                    .text_xs()
+                                    .text_color(rgb(0x94a3b8))
+                                    .truncate()
+                                    .child(task.stage.to_string())
+                            )
+                            // Progress bar (266px width, 6px height)
+                            .child(
+                                div()
+                                    .w(px(266.0))
+                                    .h(px(6.0))
+                                    .rounded_none()
+                                    .bg(rgb(0x1e2433))
+                                    .relative()
+                                    .overflow_hidden()
+                                    .child(
+                                        div()
+                                            .absolute()
+                                            .top_0()
+                                            .left_0()
+                                            .h_full()
+                                            .w(px(fill_w))
+                                            .rounded_none()
+                                            .bg(rgb(0x00e5ff))
+                                    )
+                            )
+                            // MB / Speed + percentage row
+                            .child(
+                                h_flex()
+                                    .w(px(266.0))
+                                    .justify_between()
+                                    .items_center()
+                                    .child(
+                                        div()
+                                            .text_size(px(11.0))
+                                            .text_color(rgb(0x94a3b8))
+                                            .child(mb_text)
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(11.0))
+                                            .font_bold()
+                                            .text_color(rgb(0x00e5ff))
+                                            .child(format!("{}%", pct_int))
+                                    )
+                            )
+                    )
+                    .into_any_element(),
+            );
+        }
+
+        div()
+            .id("download-flyout-card")
+            .occlude()
+            .absolute()
+            .top(px(52.0))
+            .right(right_pos)
+            .w(px(350.0))
+            .bg(rgb(0x0b1e1e))
+            .border_1()
+            .border_color(rgb(0x163232))
+            .rounded_none()
+            .shadow_2xl()
+            .p(px(14.0))
+            .on_mouse_down(MouseButton::Left, |_, window, cx| {
+                window.prevent_default();
+                cx.stop_propagation();
+            })
+            .on_mouse_down_out(move |_, _, cx| {
+                tasks_entity.update(cx, |t, cx| t.close_flyout(cx));
+            })
+            .child(
+                v_flex()
+                    .w_full()
+                    .gap_2()
+                    .children(task_cards)
+            )
+            .into_any_element()
+    }
 }
 
 impl Render for LauncherUI {
@@ -413,7 +648,8 @@ impl Render for LauncherUI {
 
         let page_groups: &[(&'static str, &[(bool, &'static str, PandoraIcon, PageType)])] = &[
             ("Library", &[
-                (true, t::instance::title(), PandoraIcon::Box, PageType::Instances),
+                (true, t::instance::title(), PandoraIcon::Play, PageType::Instances),
+                (true, "Discover Content", PandoraIcon::Compass, PageType::Modrinth { installing_for: None }),
             ]),
         ];
 
@@ -467,35 +703,40 @@ impl Render for LauncherUI {
                     }
                     let title = *title;
                     let page = page.clone();
-                    let is_active = page_type == page;
+                    let is_active = match (&page_type, &page) {
+                        (PageType::Modrinth { .. } | PageType::Curseforge { .. } | PageType::ModrinthProject { .. }, PageType::Modrinth { .. }) => true,
+                        (a, b) => a == b,
+                    };
                     group_items.push(
                         h_flex()
                             .id(title)
                             .w_full()
-                            .p_1p5()
-                            .gap_3()
+                            .h(px(36.0))
+                            .px_3()
+                            .gap_2p5()
                             .items_center()
-                            .rounded(cx.theme().radius)
+                            .rounded_none()
                             .cursor_pointer()
                             .when_else(is_active, |this| {
-                                this.bg(cx.theme().sidebar_accent)
-                                    .text_color(cx.theme().sidebar_accent_foreground)
+                                this.bg(rgba(0x00e5ff1a))
+                                    .border_1()
+                                    .border_color(rgb(0x00e5ff))
+                                    .text_color(rgb(0xffffff))
                             }, |this| {
-                                this.hover(|this| {
-                                    this.bg(cx.theme().sidebar_accent.opacity(0.8))
-                                        .text_color(cx.theme().sidebar_accent_foreground)
-                                })
+                                this.text_color(rgb(0x94a3b8))
+                                    .hover(|this| {
+                                        this.bg(rgba(0xffffff0d))
+                                            .text_color(rgb(0xffffff))
+                                    })
                             })
                             .child(
                                 div()
-                                    .size(px(34.0))
-                                    .min_size(px(34.0))
-                                    .rounded(px(8.0))
-                                    .bg(cx.theme().secondary.opacity(0.6))
+                                    .size(px(18.0))
                                     .flex()
                                     .items_center()
                                     .justify_center()
                                     .flex_none()
+                                    .when(is_active, |this| this.text_color(rgb(0x00e5ff)))
                                     .child(icon.clone())
                             )
                             .child(
@@ -513,7 +754,13 @@ impl Render for LauncherUI {
                         .w_full()
                         .gap_y_1()
                         .child(
-                            div().text_xs().font_semibold().text_color(cx.theme().muted_foreground).px_2().pb_1().child(*group_name)
+                            div()
+                                .text_size(px(10.0))
+                                .font_bold()
+                                .text_color(cx.theme().muted_foreground)
+                                .px_2()
+                                .pb_1()
+                                .child(group_name.to_uppercase())
                         )
                         .children(group_items)
                         .into_any_element()
@@ -523,31 +770,28 @@ impl Render for LauncherUI {
             if !instances.is_empty() {
                 let instances_cloned = instances.clone();
                 let current_page = page_type.clone();
-                let reorderable = Reorderable::new(&self.sidebar_reorderable_state, instances.len(), cx, move |render_index, info, _, cx| {
+                let tasks_cloned = self.data.tasks.clone();
+                let reorderable = Reorderable::new(&self.sidebar_reorderable_state, instances.len(), cx, move |render_index, _info, _, cx| {
                     let Some(instance) = instances_cloned.get(render_index) else {
                         return div().into_any_element();
                     };
                     let name = instance.name.clone();
                     let active = current_page == PageType::InstancePage { name: name.clone() };
-                    let tile = crate::component::instance_icon::render_sidebar_tile(
+                    let active_task = tasks_cloned.read(cx).snapshots().into_iter().find(|t| !t.is_finished && (t.id == Some(instance.id) || t.name == instance.name));
+                    let download_pct = active_task.as_ref().map(|t| {
+                        if t.total > 0 {
+                            (t.count as f32 / t.total as f32).clamp(0.01, 1.0)
+                        } else {
+                            0.08
+                        }
+                    });
+                    let tile = crate::component::instance_icon::render_sidebar_tile_with_download(
                         instance.icon.clone(),
                         &instance.name,
                         instance.configuration.instance_fallback_icon.as_deref(),
+                        download_pct,
                         cx,
                     );
-
-                    let grip = info.create_grip(cx, {
-                        let name = name.clone();
-                        let icon = instance.icon.clone();
-                        let fallback_icon = instance.configuration.instance_fallback_icon.clone();
-                        move |_: &ReorderableDragInfo, _, _, cx| {
-                            cx.new(|_| SidebarDragPreview {
-                                name: name.clone(),
-                                icon: icon.clone(),
-                                fallback_icon: fallback_icon.clone(),
-                            })
-                        }
-                    });
 
                     h_flex()
                         .id(name.clone())
@@ -555,16 +799,21 @@ impl Render for LauncherUI {
                         .p_1p5()
                         .gap_2()
                         .items_center()
-                        .rounded(cx.theme().radius)
+                        .rounded_none()
                         .cursor_pointer()
                         .when_else(active, |this| {
-                            this.bg(cx.theme().sidebar_accent)
-                                .text_color(cx.theme().sidebar_accent_foreground)
+                            this.bg(rgba(0x00f0ff14))
+                                .border_1()
+                                .border_color(rgb(0x00f0ff))
+                                .text_color(rgb(0xffffff))
                         }, |this| {
-                            this.hover(|this| {
-                                this.bg(cx.theme().sidebar_accent.opacity(0.8))
-                                    .text_color(cx.theme().sidebar_accent_foreground)
-                            })
+                            this.border_1()
+                                .border_color(gpui::transparent_black())
+                                .text_color(rgb(0x94a3b8))
+                                .hover(|this| {
+                                    this.bg(rgba(0xffffff0a))
+                                        .text_color(rgb(0xffffff))
+                                })
                         })
                         .child(tile)
                         .child(
@@ -575,7 +824,6 @@ impl Render for LauncherUI {
                                 .flex_1()
                                 .child(instance.name.clone())
                         )
-                        .child(grip)
                         .on_click(move |_, window, cx| {
                             crate::root::switch_page(PageType::InstancePage { name: name.clone() }, &[PageType::Instances], window, cx);
                         })
@@ -587,7 +835,13 @@ impl Render for LauncherUI {
                         .w_full()
                         .gap_y_1()
                         .child(
-                            div().text_xs().font_semibold().text_color(cx.theme().muted_foreground).px_2().pb_1().child("Instances")
+                            div()
+                                .text_size(px(10.0))
+                                .font_bold()
+                                .text_color(cx.theme().muted_foreground)
+                                .px_2()
+                                .pb_1()
+                                .child("INSTANCES")
                         )
                         .child(reorderable)
                         .into_any_element()
@@ -616,34 +870,32 @@ impl Render for LauncherUI {
                     }
                     let title = *title;
                     let page = page.clone();
-                    let is_active = page_type == page;
+                    let is_active = match (&page_type, &page) {
+                        (PageType::Modrinth { .. } | PageType::Curseforge { .. } | PageType::ModrinthProject { .. }, PageType::Modrinth { .. }) => true,
+                        (a, b) => a == b,
+                    };
                     group = group.child(
                         div()
                             .id(title)
-                            .p_1()
-                            .rounded(cx.theme().radius)
+                            .size(px(36.0))
+                            .rounded_none()
                             .cursor_pointer()
+                            .flex()
+                            .items_center()
+                            .justify_center()
                             .when_else(is_active, |this| {
-                                this.bg(cx.theme().sidebar_accent)
-                                    .text_color(cx.theme().sidebar_accent_foreground)
+                                this.bg(rgba(0x00e5ff1a))
+                                    .border_1()
+                                    .border_color(rgb(0x00e5ff))
+                                    .text_color(rgb(0x00e5ff))
                             }, |this| {
-                                this.hover(|this| {
-                                    this.bg(cx.theme().sidebar_accent.opacity(0.8))
-                                        .text_color(cx.theme().sidebar_accent_foreground)
-                                })
+                                this.text_color(rgb(0x94a3b8))
+                                    .hover(|this| {
+                                        this.bg(rgba(0xffffff0d))
+                                            .text_color(rgb(0xffffff))
+                                    })
                             })
-                            .child(
-                                div()
-                                    .size(px(34.0))
-                                    .min_size(px(34.0))
-                                    .rounded(px(8.0))
-                                    .bg(cx.theme().secondary.opacity(0.6))
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .flex_none()
-                                    .child(icon.clone())
-                            )
+                            .child(icon.clone())
                             .tooltip(move |window, cx| {
                                 Tooltip::new(title).build(window, cx)
                             })
@@ -658,23 +910,33 @@ impl Render for LauncherUI {
             if !instances.is_empty() {
                 let instances_cloned = instances.clone();
                 let current_page = page_type.clone();
+                let tasks_cloned = self.data.tasks.clone();
                 let reorderable = Reorderable::new(&self.sidebar_reorderable_state, instances.len(), cx, move |render_index, _info, _, cx| {
                     let Some(instance) = instances_cloned.get(render_index) else {
                         return div().into_any_element();
                     };
                     let name = instance.name.clone();
                     let active = current_page == PageType::InstancePage { name: name.clone() };
-                    let tile = crate::component::instance_icon::render_sidebar_tile(
+                    let active_task = tasks_cloned.read(cx).snapshots().into_iter().find(|t| !t.is_finished && (t.id == Some(instance.id) || t.name == instance.name));
+                    let download_pct = active_task.as_ref().map(|t| {
+                        if t.total > 0 {
+                            (t.count as f32 / t.total as f32).clamp(0.01, 1.0)
+                        } else {
+                            0.08
+                        }
+                    });
+                    let tile = crate::component::instance_icon::render_sidebar_tile_with_download(
                         instance.icon.clone(),
                         &instance.name,
                         instance.configuration.instance_fallback_icon.as_deref(),
+                        download_pct,
                         cx,
                     );
 
                     div()
                         .id(name.clone())
                         .p_1()
-                        .rounded(cx.theme().radius)
+                        .rounded_none()
                         .cursor_pointer()
                         .when_else(active, |this| {
                             this.bg(cx.theme().sidebar_accent)
@@ -753,7 +1015,7 @@ impl Render for LauncherUI {
         let account_tile = div()
             .size(px(34.0))
             .min_size(px(34.0))
-            .rounded(px(8.0))
+            .rounded_none()
             .overflow_hidden()
             .flex_none()
             .child(account_head.size(px(34.0)).min_w(px(34.0)).min_h(px(34.0)));
@@ -765,7 +1027,7 @@ impl Render for LauncherUI {
                 .p_1p5()
                 .gap_3()
                 .items_center()
-                .rounded(cx.theme().radius)
+                .rounded_none()
                 .cursor_pointer()
                 .hover(|this| {
                     this.bg(cx.theme().sidebar_accent)
@@ -785,9 +1047,11 @@ impl Render for LauncherUI {
                                     .text_size(rems(0.6875))
                                     .px_1p5()
                                     .py_0p5()
-                                    .rounded_sm()
-                                    .bg(cx.theme().accent.opacity(0.3))
-                                    .text_color(cx.theme().accent_foreground)
+                                    .rounded_none()
+                                    .bg(rgb(0x04242e))
+                                    .border_1()
+                                    .border_color(rgb(0x00e5ff).opacity(0.4))
+                                    .text_color(rgb(0x00f0ff))
                                     .child(badge)
                             )
                         })
@@ -804,7 +1068,7 @@ impl Render for LauncherUI {
             div()
                 .id("account-button")
                 .p_1()
-                .rounded(cx.theme().radius)
+                .rounded_none()
                 .cursor_pointer()
                 .hover(|this| {
                     this.bg(cx.theme().sidebar_accent)
@@ -828,69 +1092,66 @@ impl Render for LauncherUI {
             h_flex()
                 .id("settings-button")
                 .w_full()
-                .p_1p5()
-                .gap_3()
+                .h(px(36.0))
+                .px_3()
+                .gap_2p5()
                 .items_center()
-                .rounded(cx.theme().radius)
+                .rounded_none()
                 .cursor_pointer()
                 .when_else(page_type == PageType::Settings, |this| {
-                    this.bg(cx.theme().sidebar_accent)
-                        .text_color(cx.theme().sidebar_accent_foreground)
+                    this.bg(rgba(0x00e5ff1a))
+                        .border_1()
+                        .border_color(rgb(0x00e5ff))
+                        .text_color(rgb(0xffffff))
                 }, |this| {
-                    this.hover(|this| {
-                        this.bg(cx.theme().sidebar_accent.opacity(0.8))
-                            .text_color(cx.theme().sidebar_accent_foreground)
-                    })
+                    this.text_color(rgb(0x94a3b8))
+                        .hover(|this| {
+                            this.bg(rgba(0xffffff0d))
+                                .text_color(rgb(0xffffff))
+                        })
                 })
                 .child(
                     div()
-                        .size(px(34.0))
-                        .min_size(px(34.0))
-                        .rounded(px(8.0))
-                        .bg(cx.theme().secondary.opacity(0.6))
+                        .size(px(18.0))
                         .flex()
                         .items_center()
                         .justify_center()
                         .flex_none()
+                        .when(page_type == PageType::Settings, |this| this.text_color(rgb(0x00e5ff)))
                         .child(PandoraIcon::Settings)
                 )
                 .child(div().text_sm().font_medium().child(t::settings::title()))
                 .on_click(cx.listener(|this, _, window, cx| {
-                    this.switch_page(PageType::Settings, &[], window, cx);
+                    crate::root::open_settings_modal(&this.data, window, cx);
                 }))
                 .into_any_element()
         } else {
             div()
                 .id("settings-button")
-                .p_1()
-                .rounded(cx.theme().radius)
+                .size(px(36.0))
+                .rounded_none()
                 .cursor_pointer()
+                .flex()
+                .items_center()
+                .justify_center()
                 .when_else(page_type == PageType::Settings, |this| {
-                    this.bg(cx.theme().sidebar_accent)
-                        .text_color(cx.theme().sidebar_accent_foreground)
+                    this.bg(rgba(0x00e5ff1a))
+                        .border_1()
+                        .border_color(rgb(0x00e5ff))
+                        .text_color(rgb(0x00e5ff))
                 }, |this| {
-                    this.hover(|this| {
-                        this.bg(cx.theme().sidebar_accent.opacity(0.8))
-                            .text_color(cx.theme().sidebar_accent_foreground)
-                    })
+                    this.text_color(rgb(0x94a3b8))
+                        .hover(|this| {
+                            this.bg(rgba(0xffffff0d))
+                                .text_color(rgb(0xffffff))
+                        })
                 })
-                .child(
-                    div()
-                        .size(px(34.0))
-                        .min_size(px(34.0))
-                        .rounded(px(8.0))
-                        .bg(cx.theme().secondary.opacity(0.6))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .flex_none()
-                        .child(PandoraIcon::Settings)
-                )
+                .child(PandoraIcon::Settings)
                 .tooltip(move |window, cx| {
                     Tooltip::new(t::settings::title()).build(window, cx)
                 })
                 .on_click(cx.listener(|this, _, window, cx| {
-                    this.switch_page(PageType::Settings, &[], window, cx);
+                    crate::root::open_settings_modal(&this.data, window, cx);
                 }))
                 .into_any_element()
         };
@@ -899,30 +1160,32 @@ impl Render for LauncherUI {
             h_flex()
                 .id("wardrobe-button")
                 .w_full()
-                .p_1p5()
-                .gap_3()
+                .h(px(36.0))
+                .px_3()
+                .gap_2p5()
                 .items_center()
-                .rounded(cx.theme().radius)
+                .rounded_none()
                 .cursor_pointer()
                 .when_else(page_type == PageType::Skins, |this| {
-                    this.bg(cx.theme().sidebar_accent)
-                        .text_color(cx.theme().sidebar_accent_foreground)
+                    this.bg(rgba(0x00e5ff1a))
+                        .border_1()
+                        .border_color(rgb(0x00e5ff))
+                        .text_color(rgb(0xffffff))
                 }, |this| {
-                    this.hover(|this| {
-                        this.bg(cx.theme().sidebar_accent.opacity(0.8))
-                            .text_color(cx.theme().sidebar_accent_foreground)
-                    })
+                    this.text_color(rgb(0x94a3b8))
+                        .hover(|this| {
+                            this.bg(rgba(0xffffff0d))
+                                .text_color(rgb(0xffffff))
+                        })
                 })
                 .child(
                     div()
-                        .size(px(34.0))
-                        .min_size(px(34.0))
-                        .rounded(px(8.0))
-                        .bg(cx.theme().secondary.opacity(0.6))
+                        .size(px(18.0))
                         .flex()
                         .items_center()
                         .justify_center()
                         .flex_none()
+                        .when(page_type == PageType::Skins, |this| this.text_color(rgb(0x00e5ff)))
                         .child(PandoraIcon::Hanger)
                 )
                 .child(div().text_sm().font_medium().child("Wardrobe"))
@@ -933,30 +1196,25 @@ impl Render for LauncherUI {
         } else {
             div()
                 .id("wardrobe-button")
-                .p_1()
-                .rounded(cx.theme().radius)
+                .size(px(36.0))
+                .rounded_none()
                 .cursor_pointer()
+                .flex()
+                .items_center()
+                .justify_center()
                 .when_else(page_type == PageType::Skins, |this| {
-                    this.bg(cx.theme().sidebar_accent)
-                        .text_color(cx.theme().sidebar_accent_foreground)
+                    this.bg(rgba(0x00e5ff1a))
+                        .border_1()
+                        .border_color(rgb(0x00e5ff))
+                        .text_color(rgb(0x00e5ff))
                 }, |this| {
-                    this.hover(|this| {
-                        this.bg(cx.theme().sidebar_accent.opacity(0.8))
-                            .text_color(cx.theme().sidebar_accent_foreground)
-                    })
+                    this.text_color(rgb(0x94a3b8))
+                        .hover(|this| {
+                            this.bg(rgba(0xffffff0d))
+                                .text_color(rgb(0xffffff))
+                        })
                 })
-                .child(
-                    div()
-                        .size(px(34.0))
-                        .min_size(px(34.0))
-                        .rounded(px(8.0))
-                        .bg(cx.theme().secondary.opacity(0.6))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .flex_none()
-                        .child(PandoraIcon::Hanger)
-                )
+                .child(PandoraIcon::Hanger)
                 .tooltip(move |window, cx| {
                     Tooltip::new("Wardrobe").build(window, cx)
                 })
@@ -1123,7 +1381,7 @@ impl Render for SidebarDragPreview {
                     .p_1p5()
                     .gap_2()
                     .items_center()
-                    .rounded(cx.theme().radius)
+                    .rounded_none()
                     .border_1()
                     .border_color(cx.theme().border)
                     .bg(cx.theme().popover)
@@ -1138,16 +1396,6 @@ impl Render for SidebarDragPreview {
                             .truncate()
                             .flex_1()
                             .child(self.name.clone())
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .size_6()
-                            .min_w_6()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(PandoraIcon::GripVertical)
                     )
             )
     }

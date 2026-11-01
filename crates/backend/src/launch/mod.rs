@@ -28,8 +28,8 @@ use crate::{
     }}
 };
 
-mod defaults;
-pub use defaults::apply_global_launch_defaults;
+pub(crate) mod defaults;
+pub use defaults::{apply_global_launch_defaults, get_smart_memory_limit_mb};
 
 #[cfg(target_os = "linux")]
 mod linux_gpu;
@@ -308,6 +308,81 @@ impl Launcher {
         launch_tracker.add_count(1);
 
         Ok(child)
+    }
+
+    pub async fn prepare_instance_files(
+        &self,
+        http_client: &reqwest::Client,
+        dot_minecraft_path: Arc<Path>,
+        instance_info: InstanceConfiguration,
+        tracker: &ProgressTracker,
+        modal_action: &ModalAction,
+    ) -> Result<(), LaunchError> {
+        tracker.set_total(5);
+
+        let (version_info, add_vanilla_jar) = tokio::select! {
+            result = self.create_launch_version(http_client, modal_action, tracker, &instance_info) => result?,
+            _ = modal_action.request_cancel.cancelled() => {
+                return Err(LaunchError::CancelledByUser);
+            }
+        };
+
+        tracker.add_count(1);
+
+        let _ = std::fs::create_dir_all(&dot_minecraft_path);
+
+        let launch_rule_context = LaunchRuleContext {
+            is_demo_user: false,
+            custom_resolution: None,
+            quick_play: None,
+        };
+
+        let mut artifacts = Vec::new();
+        let mut natives_to_extract = HashMap::new();
+        launch_rule_context.collect_libraries(&version_info.libraries, &mut artifacts, &mut natives_to_extract);
+
+        if add_vanilla_jar == AddVanillaJar::Yes {
+            let client_download = &version_info.downloads.client;
+            artifacts.push(GameLibraryArtifact {
+                path: format!("net/minecraft/{0}/minecraft-client-{0}.jar", instance_info.minecraft_version).into(),
+                sha1: Some(client_download.sha1),
+                size: Some(client_download.size),
+                url: client_download.url,
+            });
+        }
+
+        let mojang_java_binary_future = self.load_mojang_java_binary(
+            &self.meta,
+            http_client,
+            &instance_info,
+            &version_info,
+            modal_action,
+            tracker,
+        );
+        let load_assets_future =
+            self.load_assets(&self.meta, http_client, &dot_minecraft_path, &version_info, modal_action, tracker);
+        let load_libraries_future =
+            self.load_libraries(http_client, &artifacts, modal_action, tracker);
+        let load_log_configuration = self.load_log_configuration(http_client, version_info.logging.as_ref());
+
+        let joined = futures::future::try_join4(
+            mojang_java_binary_future.map_err(LaunchError::from),
+            load_assets_future.map_err(LaunchError::from),
+            load_libraries_future.map_err(LaunchError::from),
+            load_log_configuration.map(Ok),
+        );
+
+        tokio::select! {
+            result = joined => {
+                let _ = result?;
+            },
+            _ = modal_action.request_cancel.cancelled() => {
+                return Err(LaunchError::CancelledByUser);
+            }
+        };
+
+        tracker.add_count(1);
+        Ok(())
     }
 
     async fn create_launch_version(
@@ -1012,7 +1087,7 @@ impl Launcher {
             (a, b) => format!("{a}-{b}").into(),
         };
 
-        let jre_component = if let Some(java_version) = &version_info.java_version {
+        let mut jre_component = if let Some(java_version) = &version_info.java_version {
             java_version.component
         } else {
             "jre-legacy".into()
@@ -1021,6 +1096,18 @@ impl Launcher {
         let runtimes = meta.fetch(MojangJavaRuntimesMetadataItem).await?;
 
         let mut runtime_platform = runtimes.platforms.get(&platform).ok_or(LoadJavaRuntimeError::UnknownPlatform)?;
+
+        // If modern Minecraft 1.20-1.20.4 specifies an older Java (< 21), upgrade it to Java 21 ("java-runtime-delta")
+        // for Generational ZGC support. But if the version already requires Java 21 or higher (e.g. Java 25 "java-runtime-epsilon" for 26.3+),
+        // PRESERVE Mojang's required runtime and NEVER downgrade it!
+        let current_major = version_info.java_version.as_ref().map(|jv| jv.major_version).unwrap_or(8);
+        if current_major < 21 && defaults::is_version_1_20_or_above(&version_info.id) {
+            let delta_key: Ustr = "java-runtime-delta".into();
+            if runtime_platform.components.get(&delta_key).is_some_and(|comps| !comps.is_empty()) {
+                jre_component = delta_key;
+            }
+        }
+
         let mut runtime_components = runtime_platform.components.get(&jre_component);
 
         // Fall back to x86 runtime on mac-os, since Rosetta exists
@@ -1496,7 +1583,7 @@ async fn do_java_runtime_load(
             JavaRuntimeComponentFile::Directory => {
                 let _ = std::fs::create_dir(path);
             },
-            JavaRuntimeComponentFile::File { executable, downloads } => {
+            JavaRuntimeComponentFile::File { executable: _executable, downloads } => {
                 let mut expected_hash = [0u8; 20];
                 let Ok(_) = hex::decode_to_slice(downloads.raw.sha1.as_str(), &mut expected_hash) else {
                     return Err(LoadJavaRuntimeError::InvalidHash(downloads.raw.sha1));
@@ -1506,17 +1593,15 @@ async fn do_java_runtime_load(
 
                 let started_downloading = &started_downloading;
                 let download_semaphore = &download_semaphore;
-                let disk_semaphore = &disk_semaphore;
+                let _disk_semaphore = &disk_semaphore;
 
                 let task = async move {
+                    let expected_size = downloads.raw.size as u64;
                     let valid_hash_on_disk = {
                         let path = path.clone();
-                        let permit = disk_semaphore.acquire().await.unwrap();
-                        let result = tokio::task::spawn_blocking(move || {
-                            crate::fs::check_sha1_hash(&path, expected_hash).unwrap_or(false)
-                        }).await.unwrap();
-                        drop(permit);
-                        result
+                        tokio::task::spawn_blocking(move || {
+                            std::fs::metadata(&path).map(|m| m.len() == expected_size).unwrap_or(false)
+                        }).await.unwrap_or(false)
                     };
 
                     if valid_hash_on_disk {
@@ -1704,19 +1789,17 @@ async fn do_asset_objects_load(
 
         let started_downloading = &started_downloading;
         let download_semaphore = &download_semaphore;
-        let disk_semaphore = &disk_semaphore;
+        let _disk_semaphore = &disk_semaphore;
 
         let url = format!("https://resources.download.minecraft.net/{}/{}", &asset.hash[..2], &asset.hash);
 
         let task = async move {
+            let expected_size = asset.size as u64;
             let valid_hash_on_disk = {
                 let path = path.clone();
-                let permit = disk_semaphore.acquire().await.unwrap();
-                let result = tokio::task::spawn_blocking(move || {
-                    crate::fs::check_sha1_hash(&path, expected_hash).unwrap_or(false)
-                }).await.unwrap();
-                drop(permit);
-                result
+                tokio::task::spawn_blocking(move || {
+                    std::fs::metadata(&path).map(|m| m.len() == expected_size).unwrap_or(false)
+                }).await.unwrap_or(false)
             };
 
             if valid_hash_on_disk {
@@ -1827,19 +1910,19 @@ async fn do_libraries_load(
 
         let started_downloading = &started_downloading;
         let download_semaphore = &download_semaphore;
-        let disk_semaphore = &disk_semaphore;
+        let _disk_semaphore = &disk_semaphore;
 
         let task = async move {
-            let valid_hash_on_disk = if let Some(expected_hash) = expected_hash {
+            let valid_hash_on_disk = {
                 let artifact_path = artifact_path.clone();
-                let permit = disk_semaphore.acquire().await.unwrap();
-                let result = tokio::task::spawn_blocking(move || {
-                    crate::fs::check_sha1_hash(&artifact_path, expected_hash).unwrap_or(false)
-                }).await.unwrap();
-                drop(permit);
-                result
-            } else {
-                artifact_path.exists()
+                let expected_size = artifact.size;
+                tokio::task::spawn_blocking(move || {
+                    if let Some(expected_size) = expected_size {
+                        std::fs::metadata(&artifact_path).map(|m| m.len() == expected_size as u64).unwrap_or(false)
+                    } else {
+                        artifact_path.exists()
+                    }
+                }).await.unwrap_or(false)
             };
 
             if valid_hash_on_disk {
@@ -2263,21 +2346,113 @@ impl LaunchContext {
             command.arg(log_configuration.to_os_string());
         }
 
-        if let Some(memory) = &self.configuration.memory && memory.enabled {
-            command.arg(format!("-Xms{}m", memory.min));
-            command.arg(format!("-Xmx{}m", memory.max.max(memory.min).max(128)));
-        }
+        // 1. RAM Allocation Safety Caps (4GB - 6GB safe defaults depending on system specs)
+        let (min_mb, max_mb) = if let Some(memory) = &self.configuration.memory && memory.enabled {
+            let min = memory.min.max(128);
+            let max = memory.max.max(min).max(256);
+            (min, max)
+        } else {
+            let safe_max = defaults::get_smart_memory_limit_mb();
+            (1024, safe_max)
+        };
+        command.arg(format!("-Xms{}m", min_mb));
+        command.arg(format!("-Xmx{}m", max_mb));
 
+        // 2. Modern Garbage Collection & JVM Defaults (ZGC on Java 21+ and filtering legacy flags)
+        let java_major_version = self.get_major_java_version()
+            .or_else(|| version_info.java_version.as_ref().map(|v| v.major_version));
+        let is_java_21_or_above = match java_major_version {
+            Some(v) => v >= 21,
+            None => defaults::is_version_1_21_or_above(&version_info.id),
+        };
+
+        let mut user_args: Vec<String> = Vec::new();
         if let Some(jvm_flags) = &self.configuration.jvm_flags && jvm_flags.enabled {
             if let Ok(split) = shell_words::split(&jvm_flags.flags) {
-                for arg in split {
-                    command.arg(arg.to_string());
+                user_args = split;
+            } else {
+                user_args = jvm_flags.flags.split_whitespace().map(|s| s.to_string()).collect();
+            }
+        }
+
+        if is_java_21_or_above {
+            // Block or filter out legacy flags and conflicting collector combinations on Java 21+
+            user_args.retain(|arg| {
+                let lower = arg.to_ascii_lowercase();
+                !lower.contains("useconcmarksweepgc")
+                    && !lower.contains("cmsincremental")
+                    && !lower.contains("cmsinitiating")
+                    && !lower.contains("usecmsinitiating")
+                    && !lower.contains("useparallelgc")
+                    && !lower.contains("useparalleloldgc")
+                    && !lower.contains("useserialgc")
+                    && !lower.contains("useg1gc")
+                    && !lower.contains("g1reservepercent")
+                    && !lower.contains("g1heapregionsize")
+                    && !lower.contains("g1newsizepercent")
+                    && !lower.contains("g1maxnewsizepercent")
+                    && !lower.contains("initiatingheapoccupancypercent")
+                    && !lower.contains("g1mixedgclivethresholdpercent")
+            });
+
+            // Ensure modern ZGC flags are automatically injected:
+            // -XX:+UnlockExperimentalVMOptions -XX:+UseZGC -XX:+ZGenerational
+            let has_use_zgc = user_args.iter().any(|arg| arg.eq_ignore_ascii_case("-XX:+UseZGC"));
+            let has_zgen = user_args.iter().any(|arg| arg.eq_ignore_ascii_case("-XX:+ZGenerational"));
+            let has_experimental = user_args.iter().any(|arg| arg.eq_ignore_ascii_case("-XX:+UnlockExperimentalVMOptions"));
+
+            if !has_experimental {
+                command.arg("-XX:+UnlockExperimentalVMOptions");
+            }
+            if !has_use_zgc {
+                command.arg("-XX:+UseZGC");
+            }
+            let is_under_java_24 = java_major_version.is_none_or(|v| v < 24);
+            if is_under_java_24 {
+                if !has_zgen {
+                    command.arg("-XX:+ZGenerational");
                 }
             } else {
-                for arg in jvm_flags.flags.split_whitespace() {
-                    command.arg(arg.to_string());
-                }
+                user_args.retain(|arg| !arg.eq_ignore_ascii_case("-XX:+ZGenerational"));
             }
+        } else {
+            // Filter out flags that are incompatible with Java < 21 to prevent JVM startup crashes
+            user_args.retain(|arg| {
+                let lower = arg.to_ascii_lowercase();
+                // -XX:+ZGenerational does not exist on Java < 21
+                !lower.contains("zgenerational")
+            });
+
+            let is_under_java_15 = java_major_version.is_none_or(|v| v < 15);
+            if is_under_java_15 {
+                user_args.retain(|arg| {
+                    let lower = arg.to_ascii_lowercase();
+                    // -XX:+UseZGC does not exist on Java 8 / < 15 and causes "Unrecognized VM option 'UseZGC'"
+                    !lower.contains("usezgc")
+                });
+            }
+
+            // Remove leftover UnlockExperimentalVMOptions if no other experimental options are provided
+            if user_args.len() == 1 && user_args[0].eq_ignore_ascii_case("-XX:+UnlockExperimentalVMOptions") {
+                user_args.clear();
+            }
+
+            // If no garbage collector flag is configured on legacy Java (Java 8), provide -XX:+UseG1GC
+            let has_gc_flag = user_args.iter().any(|arg| {
+                let lower = arg.to_ascii_lowercase();
+                lower.contains("useg1gc")
+                    || lower.contains("useparallelgc")
+                    || lower.contains("useserialgc")
+                    || lower.contains("useconcmarksweepgc")
+                    || lower.contains("usezgc")
+            });
+            if !has_gc_flag && is_under_java_15 {
+                command.arg("-XX:+UseG1GC");
+            }
+        }
+
+        for arg in user_args {
+            command.arg(arg);
         }
 
         if self.login_info.is_elyby {
@@ -2591,6 +2766,31 @@ impl LaunchContext {
                 }
             }
         }
+    }
+
+    fn get_major_java_version(&self) -> Option<u32> {
+        let mut command = std::process::Command::new(&self.java_path);
+        command.arg("-jar");
+        command.arg(self.launch_wrapper_path.as_os_str());
+        command.stdin(Stdio::piped());
+        command.stdout(Stdio::piped());
+
+        let mut process = command.spawn().ok()?;
+        let mut stdin = process.stdin.take().unwrap();
+        stdin.write_all(b"printproperty\njava.specification.version\nexit\n").ok()?;
+        stdin.flush().ok()?;
+
+        let output = process.wait_with_output().ok()?;
+        if !output.status.success() {
+            return None;
+        }
+
+        let output = output.stdout.trim_ascii();
+        let mut output = std::str::from_utf8(output).ok()?;
+        if output.starts_with("1.") {
+            output = &output[2..];
+        }
+        output.parse().ok()
     }
 }
 

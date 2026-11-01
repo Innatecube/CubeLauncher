@@ -641,8 +641,8 @@ impl RenderOnce for Tab {
         } else {
             &normal_style
         };
-        let radius = self.variant.radius(self.size, cx);
-        let inner_radius = self.variant.inner_radius(self.size, cx);
+        let radius = Pixels::ZERO;
+        let inner_radius = Pixels::ZERO;
         let inner_paddings = self.variant.inner_paddings(self.size);
         let inner_margins = self.variant.inner_margins(self.size);
         let inner_height = self.variant.inner_height(self.size);
@@ -704,11 +704,10 @@ impl RenderOnce for Tab {
         let inner_content = h_flex()
             .flex_1()
             .h(inner_height)
-            .line_height(relative(1.))
+            .line_height(relative(1.25))
             .whitespace_nowrap()
             .items_center()
             .justify_center()
-            .overflow_hidden()
             .margins(inner_margins)
             // Normally the label decides the tab width, so it never shrinks. With
             // `max_width` it is the one part that gives way.
@@ -730,7 +729,7 @@ impl RenderOnce for Tab {
                     .map(|this| match (self.label, max_width) {
                         // Text always takes its natural width, so it needs a box
                         // that is allowed to shrink to ellipsize inside of.
-                        (Some(label), Some(_)) => this.child(div().truncate().child(label)),
+                        (Some(label), Some(_)) => this.child(div().whitespace_nowrap().text_ellipsis().child(label)),
                         (Some(label), None) => this.child(label),
                         (None, _) => this,
                     })
@@ -793,7 +792,6 @@ impl RenderOnce for Tab {
             .items_center()
             .flex_shrink_0()
             .h(height)
-            .overflow_hidden()
             .map(|this| match self.size {
                 Size::XSmall => this.text_xs(),
                 Size::Large => this.text_base(),

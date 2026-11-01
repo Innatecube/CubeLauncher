@@ -352,17 +352,9 @@ fn paint_line(
     window: &mut Window,
     cx: &mut App,
 ) -> Result<()> {
-    let line_bounds = Bounds::new(
-        origin,
-        size(
-            layout.width,
-            line_height * (wrap_boundaries.len() as f32 + 1.),
-        ),
-    );
-    window.paint_layer(line_bounds, |window| {
-        let padding_top = (line_height - layout.ascent - layout.descent) / 2.;
-        let baseline_offset = point(px(0.), padding_top + layout.ascent);
-        let mut decoration_runs = decoration_runs.iter();
+    let padding_top = (line_height - layout.ascent - layout.descent) / 2.;
+    let baseline_offset = point(px(0.), padding_top + layout.ascent);
+    let mut decoration_runs = decoration_runs.iter();
         let mut wraps = wrap_boundaries.iter().peekable();
         let mut run_end = 0;
         let mut color = black();
@@ -584,7 +576,6 @@ fn paint_line(
         }
 
         Ok(())
-    })
 }
 
 fn paint_line_background(
@@ -598,15 +589,7 @@ fn paint_line_background(
     window: &mut Window,
     cx: &mut App,
 ) -> Result<()> {
-    let line_bounds = Bounds::new(
-        origin,
-        size(
-            layout.width,
-            line_height * (wrap_boundaries.len() as f32 + 1.),
-        ),
-    );
-    window.paint_layer(line_bounds, |window| {
-        let mut decoration_runs = decoration_runs.iter();
+    let mut decoration_runs = decoration_runs.iter();
         let mut wraps = wrap_boundaries.iter().peekable();
         let mut run_end = 0;
         let mut current_background: Option<(Point<Pixels>, Hsla)> = None;
@@ -733,7 +716,6 @@ fn paint_line_background(
         }
 
         Ok(())
-    })
 }
 
 fn aligned_origin_x(

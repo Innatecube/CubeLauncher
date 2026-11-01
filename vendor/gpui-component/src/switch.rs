@@ -125,11 +125,7 @@ impl RenderOnce for Switch {
             _ => px(16.),
         };
         let inset = px(2.);
-        let radius = if cx.theme().radius >= px(4.) {
-            bg_height
-        } else {
-            cx.theme().radius
-        };
+        let radius = px(0.);
 
         // The thumb's position is geometry, not a semantic state style: a
         // `checked` style setting `left` outranks the instance style by the
@@ -178,14 +174,10 @@ impl RenderOnce for Switch {
                         .items_center()
                         .border(inset)
                         .border_color(cx.theme().transparent)
-                        .when(!checked, |this| this.bg(unchecked_bg))
-                        .styles(|styles| {
-                            styles
-                                .checked(|style| style.bg(checked_bg))
-                                .disabled(|style| {
-                                    style.when(checked, |style| style.bg(disabled_checked_bg))
-                                })
-                        })
+                        .when_else(checked,
+                            |this| this.bg(if self.disabled { disabled_checked_bg } else { checked_bg }),
+                            |this| this.bg(unchecked_bg),
+                        )
                         .map(|this| self.tooltip.apply(this))
                         .child(
                             // Switch Toggle

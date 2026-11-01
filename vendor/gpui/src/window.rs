@@ -2379,7 +2379,10 @@ impl Window {
     /// and skip the frame request when it is set.
     pub fn request_animation_frame(&self) {
         let entity = self.current_view();
-        self.on_next_frame(move |_, cx| cx.notify(entity));
+        self.on_next_frame(move |window, cx| {
+            cx.notify(entity);
+            window.refresh();
+        });
     }
 
     /// Runs all callbacks scheduled via [`Self::on_next_frame`], returning how many ran.
@@ -2459,7 +2462,6 @@ impl Window {
     /// Renders the current frame's scene to a texture and returns the pixel data as an RGBA image.
     /// This does not present the frame to screen - useful for visual testing where we want
     /// to capture what would be rendered without displaying it or requiring the window to be visible.
-    #[cfg(any(test, feature = "test-support"))]
     pub fn render_to_image(&self) -> anyhow::Result<image::RgbaImage> {
         self.platform_window
             .render_to_image(&self.rendered_frame.scene)
@@ -3147,7 +3149,10 @@ impl Window {
             self.prompt = Some(prompt);
         } else if let Some(active_drag) = cx.active_drag.take() {
             let mut element = active_drag.view.clone().into_any_element();
-            let offset = self.mouse_position() - active_drag.cursor_offset;
+            let mut offset = self.mouse_position() - active_drag.cursor_offset;
+            if active_drag.lock_x {
+                offset.x = active_drag.initial_offset.x;
+            }
             element.prepaint_as_root(offset, AvailableSpace::min_size(), self, cx);
             active_drag_element = Some(element);
             cx.active_drag = Some(active_drag);
@@ -3992,7 +3997,7 @@ impl Window {
         let content_mask = self.snapped_content_mask();
         let opacity = self.element_opacity();
         let element_bounds = self.cover_bounds(bounds);
-        let element_corner_radii = corner_radii.scale(scale_factor);
+        let element_corner_radii = Corners::default();
         for shadow in shadows {
             if shadow.inset {
                 continue;
@@ -4003,7 +4008,7 @@ impl Window {
                 blur_radius: shadow.blur_radius.scale(scale_factor),
                 bounds: self.cover_bounds(shadow_bounds),
                 content_mask,
-                corner_radii: corner_radii.scale(scale_factor),
+                corner_radii: Corners::default(),
                 color: shadow.color.opacity(opacity),
                 element_bounds,
                 element_corner_radii,
@@ -4028,27 +4033,18 @@ impl Window {
         let content_mask = self.snapped_content_mask();
         let opacity = self.element_opacity();
         let element_bounds = self.cover_bounds(bounds);
-        let element_corner_radii = corner_radii.scale(scale_factor);
+        let element_corner_radii = Corners::default();
         for shadow in shadows {
             if !shadow.inset {
                 continue;
             }
             let hole = (bounds + shadow.offset).dilate(-shadow.spread_radius);
-            // Clamp at zero so a large spread can't produce negative radii, which would
-            // break the SDF in the shader.
-            let zero = Pixels::ZERO;
-            let hole_corner_radii = Corners {
-                top_left: (corner_radii.top_left - shadow.spread_radius).max(zero),
-                top_right: (corner_radii.top_right - shadow.spread_radius).max(zero),
-                bottom_right: (corner_radii.bottom_right - shadow.spread_radius).max(zero),
-                bottom_left: (corner_radii.bottom_left - shadow.spread_radius).max(zero),
-            };
             self.next_frame.scene.insert_primitive(Shadow {
                 order: 0,
                 blur_radius: shadow.blur_radius.scale(scale_factor),
                 bounds: self.cover_bounds(hole),
                 content_mask,
-                corner_radii: hole_corner_radii.scale(scale_factor),
+                corner_radii: Corners::default(),
                 color: shadow.color.opacity(opacity),
                 element_bounds,
                 element_corner_radii,
@@ -4118,7 +4114,7 @@ impl Window {
             content_mask: self.snapped_content_mask(),
             background: quad.background.opacity(opacity),
             border_color: quad.border_color.opacity(opacity),
-            corner_radii: quad.corner_radii.scale(self.scale_factor()),
+            corner_radii: Corners::default(),
             border_widths: snapped_border_widths,
             border_style: quad.border_style,
         };
@@ -4576,9 +4572,7 @@ impl Window {
         };
 
         let content_mask = self.snapped_content_mask();
-        let corner_radii = corner_radii
-            .clamp_radii_for_quad_size(visible_bounds.size)
-            .scale(self.scale_factor());
+        let _ = corner_radii;
         let opacity = self.element_opacity();
 
         self.next_frame.scene.insert_primitive(PolychromeSprite {
@@ -4587,7 +4581,7 @@ impl Window {
             grayscale: grayscale.into(),
             bounds: visible_bounds_snapped,
             content_mask,
-            corner_radii,
+            corner_radii: Corners::default(),
             tile: sub_tile,
             opacity,
         });
@@ -5108,6 +5102,8 @@ impl Window {
                             cursor_offset: position,
                             cursor_style: None,
                             external_payload_source: None,
+                            initial_offset: position,
+                            lock_x: false,
                         });
                     }
                     PlatformInput::MouseMove(MouseMoveEvent {

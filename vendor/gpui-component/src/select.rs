@@ -481,7 +481,7 @@ where
                                 .text_color(fg)
                                 .when(self.state.disabled, |this| this.opacity(0.5))
                                 .border_color(cx.theme().input)
-                                .rounded(cx.theme().radius)
+                                .rounded_none()
                         })
                         .input_size(self.state.size)
                         .input_text_size(self.state.size)

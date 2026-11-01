@@ -215,15 +215,27 @@ fn is_default_wrapper_command_configuration(config: &Option<InstanceWrapperComma
     }
 }
 
+pub const DEFAULT_ZGC_FLAGS: &'static str = "-XX:+UnlockExperimentalVMOptions -XX:+UseZGC -XX:+ZGenerational";
+
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct InstanceJvmFlagsConfiguration {
     pub enabled: bool,
     pub flags: Arc<str>,
 }
 
+impl InstanceJvmFlagsConfiguration {
+    pub fn zgc_default() -> Self {
+        Self {
+            enabled: true,
+            flags: Arc::from(DEFAULT_ZGC_FLAGS),
+        }
+    }
+}
+
 pub fn is_default_jvm_flags_configuration(config: &Option<InstanceJvmFlagsConfiguration>) -> bool {
     if let Some(config) = config {
-        !config.enabled && config.flags.trim_ascii().is_empty()
+        (!config.enabled && config.flags.trim_ascii().is_empty())
+            || (config.enabled && &*config.flags == DEFAULT_ZGC_FLAGS)
     } else {
         true
     }
@@ -321,7 +333,7 @@ pub static AUTO_LIBRARY_PATH_GLFW: Lazy<Option<Arc<Path>>> = Lazy::new(|| get_sh
 pub static AUTO_LIBRARY_PATH_OPENAL: Lazy<Option<Arc<Path>>> = Lazy::new(|| get_shared_library_path_for_name("openal"));
 
 #[cfg(not(unix))]
-fn get_shared_library_path_for_name(name: &str) -> Option<Arc<Path>> {
+fn get_shared_library_path_for_name(_name: &str) -> Option<Arc<Path>> {
     None
 }
 

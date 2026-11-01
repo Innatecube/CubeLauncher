@@ -1194,7 +1194,7 @@ impl PopupMenu {
             .text_sm()
             .py_0()
             .px(INNER_PADDING)
-            .rounded(radius)
+            .rounded_none()
             .items_center()
             .selected(selected)
             .on_hover(cx.listener(move |this, hovered, _, cx| {

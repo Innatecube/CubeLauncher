@@ -108,20 +108,24 @@ impl Element for ResponsiveGrid {
                             let min_element_width_plus_padding = min_element_width.to_f64() + gap_width.to_f64();
                             let horizontal_count = (bounds_width_plus_padding / min_element_width_plus_padding).floor().max(1.0) as usize;
 
-                            let (element_width, horizontal_count) = if horizontal_count >= children_count {
-                                (min_element_width, children_count)
+                            if horizontal_count >= children_count {
+                                let total_children_width = min_element_width * children_count + gap_width * children_count.saturating_sub(1);
+                                (total_children_width.min(base_width), children_count)
                             } else {
-                                let padding_width = gap_width * (horizontal_count - 1);
-                                let width = (base_width - padding_width) / horizontal_count as f32;
-
-                                (width, horizontal_count)
-                            };
-
-                            (element_width * children_count + gap_width * children_count.saturating_sub(1), horizontal_count)
+                                (base_width, horizontal_count)
+                            }
                         };
 
-                        let rows = (children_count + horizontal_count - 1) / horizontal_count;
-                        let height = (min_element_height + gap_height) * rows;
+                        let rows = if horizontal_count > 0 {
+                            (children_count + horizontal_count - 1) / horizontal_count
+                        } else {
+                            0
+                        };
+                        let height = if rows == 0 {
+                            Pixels::ZERO
+                        } else {
+                            min_element_height * rows + gap_height * (rows - 1)
+                        };
 
                         size(width, height)
                     },

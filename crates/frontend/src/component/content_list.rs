@@ -247,7 +247,7 @@ impl ContentListDelegate {
             },
             bridge::instance::ContentUpdateStatus::Modrinth | bridge::instance::ContentUpdateStatus::Curseforge => {
                 let updating = self.updating.clone();
-                let backend_handle = self.backend_handle.clone();
+                let mod_name: SharedString = summary.content_summary.name.clone().unwrap_or_else(|| "".into()).into();
                 Some(
                     Button::new(("update", element_id)).success().icon(PandoraIcon::Download)
                         .loading(is_loading)
@@ -264,14 +264,14 @@ impl ContentListDelegate {
                             if delegate.is_selected(element_id) {
                                 for summary in &delegate.content {
                                     if delegate.is_selected(summary.filename_hash) && summary.update.can_update(delegate.for_loader, delegate.for_version.as_str()) {
-                                        crate::root::update_single_mod(id, summary.id, summary.filename_hash, &updating, &backend_handle, window, cx);
+                                        crate::root::update_single_mod(id, summary.id, summary.filename_hash, &updating, summary.content_summary.name.clone().unwrap_or_else(|| "".into()).into(), &delegate.data, window, cx);
                                     }
                                 }
                                 delegate.selected.clear();
                                 delegate.selected_range.clear();
                                 delegate.last_clicked_non_range = None;
                             } else {
-                                crate::root::update_single_mod(id, content_id, element_id, &updating, &backend_handle, window, cx);
+                                crate::root::update_single_mod(id, content_id, element_id, &updating, mod_name.clone(), &delegate.data, window, cx);
                             }
                             cx.notify();
                         }))
@@ -362,17 +362,6 @@ impl ContentListDelegate {
             toggle_control.into_any_element()
         };
 
-        let mut item_content = h_flex()
-            .gap_1()
-            .child(controls)
-            .child(icon.size_16().min_w_16().min_h_16().grayscale(!summary.enabled))
-            .when(!summary.enabled, |this| this.line_through())
-            .line_height(rems(1.2))
-            .child(desc1.pl_2())
-            .when_some(desc2, |div, desc2| div.child(desc2))
-            .border_1()
-            .when(selected, |content| content.border_color(cx.theme().selection).bg(cx.theme().selection.alpha(0.2)));
-
         let mut right_buttons = Vec::new();
         if let Some(unzip_button) = unzip_button {
             right_buttons.push(unzip_button.into_any_element());
@@ -381,7 +370,43 @@ impl ContentListDelegate {
             right_buttons.push(update_button.into_any_element());
         }
         right_buttons.push(delete_button.into_any_element());
-        item_content = item_content.child(h_flex().absolute().right_4().gap_2().children(right_buttons));
+
+        let left_content = h_flex()
+            .items_center()
+            .gap_3()
+            .flex_1()
+            .min_w_0()
+            .child(icon.size_12().min_w_12().min_h_12().rounded_none().grayscale(!summary.enabled))
+            .child(
+                v_flex()
+                    .flex_1()
+                    .min_w_0()
+                    .child(desc1.pl_1())
+                    .when_some(desc2, |div, desc2| div.child(desc2))
+            );
+
+        let right_content = h_flex()
+            .items_center()
+            .gap_3()
+            .flex_none()
+            .children(right_buttons)
+            .child(controls);
+
+        let item_content = h_flex()
+            .justify_between()
+            .items_center()
+            .p_2()
+            .px_3()
+            .rounded_none()
+            .bg(cx.theme().popover)
+            .border_1()
+            .border_color(cx.theme().border)
+            .hover(|this| this.bg(cx.theme().secondary_hover).border_color(cx.theme().info.opacity(0.35)))
+            .when(!summary.enabled, |this| this.line_through().opacity(0.7))
+            .line_height(relative(1.25))
+            .child(left_content)
+            .child(right_content)
+            .when(selected, |content| content.border_color(cx.theme().info).bg(cx.theme().info.opacity(0.18)));
 
         ListItem::new(("item", element_id)).p_1().child(item_content).on_click(cx.listener(move |this, click: &ClickEvent, _, cx| {
             cx.stop_propagation();
@@ -485,50 +510,60 @@ impl ContentListDelegate {
             summary.version_str.clone(), summary.authors.clone(), summary.rich_description.clone(),
             !visually_enabled, child.path.clone(), cx.theme().muted_foreground);
 
-        let mut item_content = h_flex()
-            .gap_1()
-            .pl_4()
-            .child(
-                Switch::new(("toggle", element_id))
-                    .checked(enabled && !child.disabled_third_party_downloads)
-                    .when_else(child.is_missing || child.disabled_third_party_downloads, |this| {
-                        this.disabled(true)
-                    }, |this| {
-                        this.on_click({
-                            let id = self.id;
-                            let content_id = child.parent;
-                            let child_id = child.summary.id.clone();
-                            let child_name = child.summary.name.clone();
-                            let path = child.path.clone();
-                            let disabled_default = child.disabled_default;
-                            let backend_handle = self.backend_handle.clone();
-                            move |checked, window, cx| {
-                                cx.stop_propagation();
-                                window.prevent_default();
+        let toggle_control = Switch::new(("toggle", element_id))
+            .checked(enabled && !child.disabled_third_party_downloads)
+            .when_else(child.is_missing || child.disabled_third_party_downloads, |this| {
+                this.disabled(true)
+            }, |this| {
+                this.on_click({
+                    let id = self.id;
+                    let content_id = child.parent;
+                    let child_id = child.summary.id.clone();
+                    let child_name = child.summary.name.clone();
+                    let path = child.path.clone();
+                    let disabled_default = child.disabled_default;
+                    let backend_handle = self.backend_handle.clone();
+                    move |checked, window, cx| {
+                        cx.stop_propagation();
+                        window.prevent_default();
 
-                                backend_handle.send(MessageToBackend::SetContentChildEnabled {
-                                    id,
-                                    content_id,
-                                    child_id: child_id.clone(),
-                                    child_name: child_name.clone(),
-                                    child_filename: path.clone(),
-                                    disabled_default,
-                                    enabled: *checked,
-                                });
-                            }
-                        })
-                    })
-                    .px_2()
-            )
-            .child(icon.size_16().min_w_16().min_h_16().grayscale(!visually_enabled))
-            .line_height(rems(1.2))
-            .child(desc1.pl_2().when(!visually_enabled, |this| this.line_through()))
-            .when_some(desc2, |div, desc2| div.child(desc2.when(!visually_enabled, |this| this.line_through())));
+                        backend_handle.send(MessageToBackend::SetContentChildEnabled {
+                            id,
+                            content_id,
+                            child_id: child_id.clone(),
+                            child_name: child_name.clone(),
+                            child_filename: path.clone(),
+                            disabled_default,
+                            enabled: *checked,
+                        });
+                    }
+                })
+            })
+            .px_2();
+
+        let left_content = h_flex()
+            .items_center()
+            .gap_3()
+            .flex_1()
+            .min_w_0()
+            .child(icon.size_10().min_w_10().min_h_10().rounded_none().grayscale(!visually_enabled))
+            .child(
+                v_flex()
+                    .flex_1()
+                    .min_w_0()
+                    .child(desc1.pl_1().when(!visually_enabled, |this| this.line_through()))
+                    .when_some(desc2, |div, desc2| div.child(desc2.when(!visually_enabled, |this| this.line_through())))
+            );
+
+        let mut right_content = h_flex()
+            .items_center()
+            .gap_3()
+            .flex_none();
 
         if child.disabled_third_party_downloads {
-            item_content = item_content.child(ErrorAlert::new(t::instance::content::blocked().into(), t::instance::content::install::no_third_party_downloads().into()).w(Length::Auto));
+            right_content = right_content.child(ErrorAlert::new(t::instance::content::blocked().into(), t::instance::content::install::no_third_party_downloads().into()).w(Length::Auto));
         } else if child.is_missing {
-            item_content = item_content.child(Button::new("download").label(t::instance::content::download()).success().on_click({
+            right_content = right_content.child(Button::new("download").label(t::instance::content::download()).success().on_click({
                 let backend_handle = self.backend_handle.clone();
                 let id = self.id;
                 let content_id = child.parent;
@@ -546,6 +581,18 @@ impl ContentListDelegate {
                 }
             }));
         }
+
+        right_content = right_content.child(toggle_control);
+
+        let item_content = h_flex()
+            .justify_between()
+            .items_center()
+            .pl_8()
+            .pr_3()
+            .py_1p5()
+            .line_height(relative(1.25))
+            .child(left_content)
+            .child(right_content);
 
         ListItem::new(("item", element_id)).p_1().child(item_content)
     }
@@ -885,7 +932,7 @@ fn create_descriptions(name: Option<Arc<str>>, version: Arc<str>, authors: Arc<s
                 .gap_2()
                 .whitespace_nowrap()
                 .overflow_x_hidden()
-                .line_height(relative(1.0))
+                .line_height(relative(1.25))
                 .child(SharedString::from(filename))
                 .child(div().line_clamp(2).child(styled_text));
             return (description1, None);
@@ -895,6 +942,7 @@ fn create_descriptions(name: Option<Arc<str>>, version: Arc<str>, authors: Arc<s
             .min_w_1_5()
             .whitespace_nowrap()
             .overflow_x_hidden()
+            .line_height(relative(1.25))
             .child(SharedString::from(filename))
             .child(div().text_color(secondary).child(SharedString::from(version)));
         return (description1, None);
@@ -904,10 +952,12 @@ fn create_descriptions(name: Option<Arc<str>>, version: Arc<str>, authors: Arc<s
         .min_w_1_5()
         .whitespace_nowrap()
         .overflow_x_hidden()
+        .line_height(relative(1.25))
         .child(SharedString::from(name.clone().unwrap_or(filename.clone())))
         .child(div().text_color(secondary).child(SharedString::from(version)));
 
     let mut description2 = v_flex()
+        .line_height(relative(1.25))
         .text_color(secondary)
         .child(SharedString::from(authors));
 

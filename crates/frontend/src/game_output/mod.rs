@@ -1057,7 +1057,7 @@ impl Render for GameOutputRoot {
 
         let bar = h_flex()
             .w_full()
-            .rounded(cx.theme().radius)
+            .rounded_none()
             .id("controls")
             .flex_1()
             .gap_4()
@@ -1081,7 +1081,7 @@ impl Render for GameOutputRoot {
             .child(
                 h_flex()
                     .size_full()
-                    .rounded(cx.theme().radius)
+                    .rounded_none()
                     .border_1()
                     .border_color(cx.theme().border)
                     .child(GameOutputList {

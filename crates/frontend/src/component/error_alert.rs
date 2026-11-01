@@ -48,7 +48,7 @@ impl RenderOnce for ErrorAlert {
             .text_sm()
             .border_1()
             .border_color(border_color)
-            .rounded(radius)
+            .rounded_none()
             .items_start()
             .child(
                 div()

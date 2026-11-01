@@ -1,11 +1,11 @@
 use gpui::Corners;
 use gpui::{
     Anchor, App, Context, Edges, ElementId, InteractiveElement as _, IntoElement, ParentElement,
-    RenderOnce, StyleRefinement, Styled, Window, div, prelude::FluentBuilder,
+    Pixels, RenderOnce, StyleRefinement, Styled, Window, div, px, prelude::FluentBuilder,
 };
 
 use crate::{
-    Disableable, Selectable, Sizable, Size, StyledExt as _,
+    ActiveTheme, Disableable, Selectable, Sizable, Size, StyledExt as _,
     menu::{DropdownMenu, PopupMenu},
 };
 
@@ -142,7 +142,7 @@ impl Selectable for DropdownButton {
 }
 
 impl RenderOnce for DropdownButton {
-    fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         debug_assert!(
             self.button.is_some() || self.menu.is_some(),
             "a DropdownButton needs a `button`, a `dropdown_menu`, or both"
@@ -158,6 +158,7 @@ impl RenderOnce for DropdownButton {
             .id(self.id)
             .h_flex()
             .refine_style(&self.style)
+            .rounded_none()
             .when_some(self.button, |this, button| {
                 let disabled = self.disabled || button.is_disabled();
                 this.child(

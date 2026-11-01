@@ -37,6 +37,7 @@ impl ReorderableState {
 
 pub struct SimpleDragPreview {
     pub name: SharedString,
+    pub start_x: f32,
 }
 
 impl Render for SimpleDragPreview {
@@ -50,7 +51,7 @@ impl Render for SimpleDragPreview {
                 .py_2()
                 .gap_2()
                 .items_center()
-                .rounded(cx.theme().radius)
+                .rounded_none()
                 .border_1()
                 .border_color(cx.theme().border)
                 .bg(cx.theme().popover)
@@ -99,7 +100,10 @@ impl ReorderableDragInfo {
             .hover(move |style| style.text_color(fg))
             .child(PandoraIcon::GripVertical)
             .cursor_grab()
-            .on_drag(self, constructor)
+            .on_drag(self, move |info, pos, window, cx| {
+                cx.set_active_drag_lock_x(true);
+                constructor(info, pos, window, cx)
+            })
             .into_any_element()
     }
 }
@@ -118,6 +122,7 @@ impl Reorderable {
         let mut interactivity = Interactivity::default();
 
         interactivity.on_drag_move(move |event: &DragMoveEvent<ReorderableDragInfo>, window, cx| {
+            cx.set_active_drag_lock_x(true);
             let info = event.drag(cx).clone();
 
             if cx.active_drag_cursor_style() != Some(CursorStyle::ClosedHand) {
@@ -264,7 +269,7 @@ impl Element for Reorderable {
 
                 self.state.update(cx, |state, cx| {
                     state.vertical_bounds.clear();
-                    if let Some(dragging_from_index) = state.dragging_from_index {
+                    if let Some(dragging_from_index) = state.dragging_from_index && dragging_from_index < elements.len() {
                         let dragging_to_index = state.dragging_to_index.unwrap_or(dragging_from_index);
                         let from_height = window.layout_bounds(elements[dragging_from_index].1).size.height + gap_height;
 

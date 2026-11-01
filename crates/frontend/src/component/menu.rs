@@ -83,7 +83,7 @@ impl RenderOnce for MenuGroupItem {
             .whitespace_nowrap()
             .when_some(self.icon, ParentElement::child)
             .child(self.title)
-            .rounded(cx.theme().radius)
+            .rounded_none()
             .when_some(self.on_click, |this, on_click| {
                 this.on_click(move |event, window, cx| {
                     (on_click)(event, window, cx);

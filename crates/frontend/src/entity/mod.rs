@@ -11,12 +11,14 @@ use crate::entity::{
 pub mod account;
 pub mod instance;
 pub mod metadata;
+pub mod task_manager;
 
 #[derive(Clone)]
 pub struct DataEntities {
     pub instances: Entity<InstanceEntries>,
     pub metadata: Entity<FrontendMetadata>,
     pub accounts: Entity<AccountEntries>,
+    pub tasks: Entity<task_manager::TaskManager>,
     pub backend_handle: BackendHandle,
     pub theme_folder: Arc<Path>,
     pub panic_messages: Arc<PanicMessages>,

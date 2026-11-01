@@ -2045,6 +2045,7 @@ pub struct Interactivity {
     pub(crate) tracked_scroll_handle: Option<ScrollHandle>,
     pub(crate) scroll_anchor: Option<ScrollAnchor>,
     pub(crate) scroll_offset: Option<Rc<RefCell<Point<Pixels>>>>,
+    pub(crate) target_scroll_offset: Option<Rc<RefCell<Point<Pixels>>>>,
     pub(crate) ongoing_scroll: Option<Rc<RefCell<OngoingScroll>>>,
     pub(crate) group: Option<SharedString>,
     /// The base style of the element, before any modifications are applied
@@ -2169,6 +2170,7 @@ impl Interactivity {
                 if let Some(scroll_handle) = self.tracked_scroll_handle.as_ref() {
                     let scroll_handle_state = scroll_handle.0.borrow();
                     self.scroll_offset = Some(scroll_handle_state.offset.clone());
+                    self.target_scroll_offset = Some(scroll_handle_state.target_offset.clone());
                     self.ongoing_scroll = Some(scroll_handle_state.ongoing_scroll.clone());
                 } else if (self.base_style.overflow.x == Some(Overflow::Scroll)
                     || self.base_style.overflow.y == Some(Overflow::Scroll))
@@ -2178,6 +2180,15 @@ impl Interactivity {
                         element_state
                             .scroll_offset
                             .get_or_insert_with(Rc::default)
+                            .clone(),
+                    );
+                    self.target_scroll_offset = Some(
+                        element_state
+                            .target_scroll_offset
+                            .get_or_insert_with(|| {
+                                let current = element_state.scroll_offset.as_ref().map(|o| *o.borrow()).unwrap_or_default();
+                                Rc::new(RefCell::new(current))
+                            })
                             .clone(),
                     );
                     self.ongoing_scroll = Some(
@@ -2361,6 +2372,37 @@ impl Interactivity {
             // Clamp scroll offset in case scroll max is smaller now (e.g., if children
             // were removed or the bounds became larger).
             let mut scroll_offset = scroll_offset.borrow_mut();
+
+            if let Some(target_offset_rc) = self.target_scroll_offset.as_ref() {
+                let mut target = target_offset_rc.borrow_mut();
+
+                target.x = target.x.clamp(-scroll_max.x, px(0.));
+                if scroll_to_bottom {
+                    target.y = -scroll_max.y;
+                    scroll_offset.y = -scroll_max.y;
+                } else {
+                    target.y = target.y.clamp(-scroll_max.y, px(0.));
+                }
+
+                let diff_x = target.x - scroll_offset.x;
+                let diff_y = target.y - scroll_offset.y;
+
+                if diff_x.abs() > px(0.5) {
+                    scroll_offset.x += diff_x * 0.12;
+                } else {
+                    scroll_offset.x = target.x;
+                }
+
+                if diff_y.abs() > px(0.5) {
+                    scroll_offset.y += diff_y * 0.12;
+                } else {
+                    scroll_offset.y = target.y;
+                }
+
+                if scroll_offset.x != target.x || scroll_offset.y != target.y {
+                    window.request_animation_frame();
+                }
+            }
 
             scroll_offset.x = scroll_offset.x.clamp(-scroll_max.x, px(0.));
             if scroll_to_bottom {
@@ -2883,6 +2925,8 @@ impl Interactivity {
                                 cursor_offset,
                                 cursor_style: drag_cursor_style,
                                 external_payload_source,
+                                initial_offset: hitbox.origin,
+                                lock_x: false,
                             });
                             pending_mouse_down.take();
                             window.refresh();
@@ -3200,6 +3244,7 @@ impl Interactivity {
         _cx: &mut App,
     ) {
         if let Some(scroll_offset) = self.scroll_offset.clone() {
+            let target_scroll_offset = self.target_scroll_offset.clone();
             let ongoing_scroll = self.ongoing_scroll.clone();
             let overflow = style.overflow;
             let allow_concurrent_scroll = style.allow_concurrent_scroll;
@@ -3247,9 +3292,30 @@ impl Interactivity {
                             delta_x = Pixels::ZERO;
                         }
                     }
-                    scroll_offset.y += delta_y;
-                    scroll_offset.x += delta_x;
-                    if *scroll_offset != old_scroll_offset {
+
+                    if event.delta.precise() {
+                        scroll_offset.y += delta_y;
+                        scroll_offset.x += delta_x;
+                        if let Some(target) = &target_scroll_offset {
+                            *target.borrow_mut() = *scroll_offset;
+                        }
+                        if *scroll_offset != old_scroll_offset {
+                            cx.notify(current_view);
+                        }
+                    } else {
+                        let step_multiplier = 2.4;
+                        let delta_x_scaled = delta_x * step_multiplier;
+                        let delta_y_scaled = delta_y * step_multiplier;
+
+                        if let Some(target) = &target_scroll_offset {
+                            let mut target_val = target.borrow_mut();
+                            target_val.y += delta_y_scaled;
+                            target_val.x += delta_x_scaled;
+                        } else {
+                            scroll_offset.y += delta_y_scaled;
+                            scroll_offset.x += delta_x_scaled;
+                        }
+                        window.request_animation_frame();
                         cx.notify(current_view);
                     }
                 }
@@ -3490,6 +3556,7 @@ pub struct InteractiveElementState {
     /// blur). `None` means no activation key is pending.
     pub(crate) pending_keyboard_down: Option<Rc<RefCell<Option<u64>>>>,
     pub(crate) scroll_offset: Option<Rc<RefCell<Point<Pixels>>>>,
+    pub(crate) target_scroll_offset: Option<Rc<RefCell<Point<Pixels>>>>,
     ongoing_scroll: Option<Rc<RefCell<OngoingScroll>>>,
     pub(crate) active_tooltip: Option<Rc<RefCell<Option<ActiveTooltip>>>>,
 }
@@ -4026,6 +4093,7 @@ impl ScrollAnchor {
 #[derive(Default, Debug)]
 struct ScrollHandleState {
     offset: Rc<RefCell<Point<Pixels>>>,
+    target_offset: Rc<RefCell<Point<Pixels>>>,
     ongoing_scroll: Rc<RefCell<OngoingScroll>>,
     bounds: Bounds<Pixels>,
     max_offset: Point<Pixels>,
@@ -4187,6 +4255,7 @@ impl ScrollHandle {
                         scroll_offset.x = state.bounds.right() - bounds.right();
                     }
                 }
+                *state.target_offset.borrow_mut() = *scroll_offset;
                 None
             }
             None => Some(active_item),
@@ -4206,6 +4275,7 @@ impl ScrollHandle {
     pub fn set_offset(&self, mut position: Point<Pixels>) {
         let state = self.0.borrow();
         *state.offset.borrow_mut() = position;
+        *state.target_offset.borrow_mut() = position;
     }
 
     /// Get the logical scroll top, based on a child index and a pixel offset.

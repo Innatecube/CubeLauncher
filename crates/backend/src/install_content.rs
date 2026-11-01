@@ -1,18 +1,18 @@
-use std::{ffi::{OsStr, OsString}, io::Write, path::Path, sync::Arc};
+use std::{ffi::{OsStr, OsString}, io::Write, path::{Path, PathBuf}, sync::Arc};
 
 use bridge::{
-    install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath, InstallTarget}, instance::{ContentFolder, ContentSummary, ContentType, ModpackFileSource}, manual_download::ManualCurseforgeDownload, modal_action::{ModalAction, ProgressTrackerFinishType}, safe_path::SafePath
+    install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath, InstallTarget}, instance::{ContentFolder, ContentSummary, ContentType, ModpackFileSource, ModpackFilePath}, manual_download::ManualCurseforgeDownload, message::EmbeddedOrRaw, modal_action::{ModalAction, ProgressTrackerFinishType}, safe_path::SafePath
 };
 use parking_lot::Mutex;
 use reqwest::StatusCode;
 use rustc_hash::{FxHashSet};
-use schema::{content::{ContentInstallReason, ContentSource}, curseforge::{CURSEFORGE_API_KEY, CURSEFORGE_RELATION_TYPE_REQUIRED_DEPENDENCY, CachedCurseforgeFileInfo, CurseforgeGetFilesRequest, CurseforgeGetModFilesRequest, CurseforgeModLoaderType}, loader::Loader, modrinth::{ModrinthDependencyType, ModrinthLoader, ModrinthProjectVersionsRequest}};
+use schema::{content::{ContentInstallReason, ContentSource}, curseforge::{CURSEFORGE_API_KEY, CURSEFORGE_RELATION_TYPE_REQUIRED_DEPENDENCY, CachedCurseforgeFileInfo, CurseforgeGetFilesRequest, CurseforgeGetModFilesRequest, CurseforgeModLoaderType}, loader::Loader, modrinth::{ModrinthDependencyType, ModrinthLoader, ModrinthProjectRequest, ModrinthProjectVersionsRequest}, unique_bytes::UniqueBytes};
 use serde::Serialize;
 use sha1::{Digest, Sha1};
 use strum::IntoEnumIterator;
 use ustr::Ustr;
 
-use crate::{BackendState, instance::Instance, metadata::{items::{CurseforgeGetFilesMetadataItem, CurseforgeGetModFilesMetadataItem, CurseforgeProjectItem, ModrinthProjectVersionsMetadataItem, ModrinthVersionMetadataItem}, manager::MetaLoadError}};
+use crate::{BackendState, instance::Instance, metadata::{items::{CurseforgeGetFilesMetadataItem, CurseforgeGetModFilesMetadataItem, CurseforgeProjectItem, ModrinthProjectMetadataItem, ModrinthProjectVersionsMetadataItem, ModrinthVersionMetadataItem}, manager::MetaLoadError}};
 
 #[derive(thiserror::Error, Debug)]
 pub enum ContentInstallError {
@@ -142,6 +142,30 @@ impl BackendState {
             None
         };
 
+        let loader = content.loader;
+        let minecraft_version = content.minecraft_version;
+
+        let mut dot_minecraft_dir: Option<Arc<Path>> = None;
+        let mut instance_running = false;
+
+        if let bridge::install::InstallTarget::NewInstance { name } = &content.target {
+            let mut inst_name = name.clone();
+            if inst_name.is_none() {
+                inst_name = content.files.first().and_then(|f| match &f.path {
+                    ContentInstallPath::ModpackFilePath(ModpackFilePath::Filename(p)) => {
+                        let s = p.as_str();
+                        Some(Arc::from(s.trim_end_matches(".mrpack").trim_end_matches(".zip")))
+                    },
+                    _ => None,
+                });
+            }
+            let inst_name = inst_name.as_deref().unwrap_or("New Instance");
+
+            let instance_icon = self.resolve_instance_icon(&[], &content.files).await;
+            dot_minecraft_dir = self.create_instance_sanitized(inst_name, &minecraft_version, loader, instance_icon)
+                .map(|v| v.join(".minecraft").into());
+        }
+
         let mut tasks = Vec::new();
 
         for content_file in content.files.iter() {
@@ -183,90 +207,154 @@ impl BackendState {
             }
         }
 
-        let mut dot_minecraft_dir = None;
-        let mut instance_running = false;
+        if dot_minecraft_dir.is_none() {
+            if let bridge::install::InstallTarget::NewInstance { name } = &content.target {
+                let mut name = name.clone();
+                if name.is_none() {
+                    name = determine_name_from_content(&files);
+                }
+                let name = name.as_deref().unwrap_or("New Instance");
 
-        let loader = content.loader;
-        let minecraft_version = content.minecraft_version;
-
-        if let bridge::install::InstallTarget::NewInstance { name } = &content.target {
-            let mut name = name.clone();
-            if name.is_none() { // todo: remove this
-                name = determine_name_from_content(&files);
+                let instance_icon = self.resolve_instance_icon(&files, &content.files).await;
+                dot_minecraft_dir = self.create_instance_sanitized(&name, &minecraft_version, loader, instance_icon)
+                    .map(|v| v.join(".minecraft").into());
             }
-            let name = name.as_deref().unwrap_or("New Instance");
-
-            // todo: use icon of mod/modpack/etc. for icon of instance
-            dot_minecraft_dir = self.create_instance_sanitized(&name, &minecraft_version, loader, None)
-                .map(|v| v.join(".minecraft").into());
+        } else if let Some(ref dot_minecraft_dir) = dot_minecraft_dir {
+            if let Some(instance_dir) = dot_minecraft_dir.parent() {
+                let icon_path = instance_dir.join("icon.png");
+                if !icon_path.exists() {
+                    let instance_icon = self.resolve_instance_icon(&files, &content.files).await;
+                    if let Some(EmbeddedOrRaw::Raw(bytes)) = instance_icon {
+                        let _ = std::fs::write(&icon_path, &*bytes);
+                    }
+                }
+            }
         }
 
-        let mut instance_lock_guard = None;
+        let mut installed_modpacks: Vec<(PathBuf, Arc<ContentSummary>)> = Vec::new();
 
-        if let bridge::install::InstallTarget::Instance(instance_id) = content.target {
-            let mut instance_state = self.instance_state.write();
-            if let Some(instance) = instance_state.instances.get_mut(instance_id) {
-                instance_running = !instance.processes.is_empty();
+        {
+            let mut instance_lock_guard = None;
 
-                if instance.configuration.get().loader == Loader::Vanilla {
-                    instance.configuration.modify(|config| {
-                        config.loader = loader;
-                    });
+            if let bridge::install::InstallTarget::Instance(instance_id) = content.target {
+                let mut instance_state = self.instance_state.write();
+                if let Some(instance) = instance_state.instances.get_mut(instance_id) {
+                    instance_running = !instance.processes.is_empty();
+
+                    if instance.configuration.get().loader == Loader::Vanilla {
+                        instance.configuration.modify(|config| {
+                            config.loader = loader;
+                        });
+                    }
+
+                    dot_minecraft_dir = Some(instance.dot_minecraft_path.clone());
+                }
+                instance_lock_guard = Some(instance_state);
+            } else if dot_minecraft_dir.is_some() {
+                instance_lock_guard = Some(self.instance_state.write());
+            }
+
+            if let Some(dot_minecraft_dir) = &dot_minecraft_dir {
+                let mods_dir = dot_minecraft_dir.join("mods");
+                let mut cannot_modify_while_running = false;
+
+                for install in files {
+                    let Some(install_path) = install.install_path else {
+                        self.send.send_warning(format!("Unable to determine install path for {}", install.filename));
+                        continue;
+                    };
+
+                    let target_path = dot_minecraft_dir.join(&install_path);
+
+                    if instance_running && target_path.starts_with(&mods_dir) {
+                        cannot_modify_while_running = true;
+                        continue;
+                    }
+
+                    let _ = std::fs::create_dir_all(target_path.parent().unwrap());
+
+                    match crate::fs::fastcopy(&install.from, &target_path, true, true) {
+                        Ok(()) => {
+                            let is_modpack = matches!(install.mod_summary.extra, ContentType::ModrinthModpack { .. } | ContentType::CurseforgeModpack { .. });
+                            if is_modpack {
+                                installed_modpacks.push((target_path.clone(), install.mod_summary.clone()));
+                            }
+                            if let Some(replace) = install.replace {
+                                self.replace_aux_path(&replace, &install.mod_summary, &target_path);
+                                if matches!(install.mod_summary.extra, ContentType::ShaderPack) {
+                                    Self::replace_shaderpack_settings_path(&replace, &target_path);
+                                }
+                                let replace_path: &Path = &replace;
+                                if replace_path != target_path.as_path() {
+                                    let _ = std::fs::remove_file(&replace);
+                                }
+                            }
+                        },
+                        Err(err) => {
+                            log::error!("Failed to install content to {:?}: {err}", target_path);
+                            let message = format!("Failed to install content to {}: {err}", target_path.display());
+                            modal_action.set_finished_with_error(Arc::from(message.as_str()));
+                        },
+                    }
                 }
 
-                dot_minecraft_dir = Some(instance.dot_minecraft_path.clone());
+                if cannot_modify_while_running {
+                    self.send.send_warning("Cannot modify mods folder while instance is running");
+                }
             }
-            instance_lock_guard = Some(instance_state);
-        } else if dot_minecraft_dir.is_some() {
-            instance_lock_guard = Some(self.instance_state.write());
+
+            drop(instance_lock_guard);
         }
 
         if let Some(dot_minecraft_dir) = dot_minecraft_dir {
             let mods_dir = dot_minecraft_dir.join("mods");
-            let mut cannot_modify_while_running = false;
-
-            for install in files {
-                let Some(install_path) = install.install_path else {
-                    self.send.send_warning(format!("Unable to determine install path for {}", install.filename));
-                    continue;
+            // Automatically extract installed modpacks so they don't remain as .zip or .mrpack archives
+            for (target_path, mod_summary) in installed_modpacks {
+                let summary = bridge::instance::InstanceContentSummary {
+                    content_summary: mod_summary.clone(),
+                    id: bridge::instance::InstanceContentID::dangling(),
+                    filename: Arc::from(target_path.file_name().and_then(|s| s.to_str()).unwrap_or("")),
+                    lowercase_search_keys: Arc::from([]),
+                    filename_hash: 0,
+                    modified_unix_ms: 0,
+                    path: Arc::from(target_path.as_path()),
+                    can_toggle: true,
+                    enabled: true,
+                    content_source: ContentSource::Manual,
+                    update: bridge::instance::ContentUpdateContext::new(bridge::instance::ContentUpdateStatus::ManualInstall, Loader::Vanilla, ""),
+                    disabled_children: Arc::new(schema::auxiliary::AuxDisabledChildren::default()),
                 };
 
-                let target_path = dot_minecraft_dir.join(&install_path);
+                let aux_path = crate::fs::pandora_aux_path_for_content(&summary);
+                let mod_copies = Box::pin(self.apply_modpack_and_collect_mods(loader, minecraft_version, &[summary], &dot_minecraft_dir, &mods_dir, &modal_action)).await;
 
-                if instance_running && target_path.starts_with(&mods_dir) {
-                    cannot_modify_while_running = true;
-                    continue;
+                let copy_tracker = modal_action.push_tracker("Extracting modpack files".into());
+                self.apply_copies_to_mods_dir(mod_copies, &mods_dir, &copy_tracker);
+                copy_tracker.set_finished(ProgressTrackerFinishType::Normal);
+
+                if let Err(err) = std::fs::remove_file(&target_path) {
+                    log::warn!("Failed to remove temporary modpack file {:?}: {err}", target_path);
                 }
-
-                let _ = std::fs::create_dir_all(target_path.parent().unwrap());
-
-                match crate::fs::fastcopy(&install.from, &target_path, true, true) {
-                    Ok(()) => {
-                        if let Some(replace) = install.replace {
-                            self.replace_aux_path(&replace, &install.mod_summary, &target_path);
-                            if matches!(install.mod_summary.extra, ContentType::ShaderPack) {
-                                Self::replace_shaderpack_settings_path(&replace, &target_path);
-                            }
-                            let replace_path: &Path = &replace;
-                            if replace_path != target_path.as_path() {
-                                let _ = std::fs::remove_file(&replace);
-                            }
-                        }
-                    },
-                    Err(err) => {
-                        log::error!("Failed to install content to {:?}: {err}", target_path);
-                        let message = format!("Failed to install content to {}: {err}", target_path.display());
-                        modal_action.set_finished_with_error(Arc::from(message.as_str()));
-                    },
+                if let Some(aux_path) = aux_path {
+                    if aux_path.exists() {
+                        let _ = std::fs::remove_file(aux_path);
+                    }
                 }
             }
 
-            if cannot_modify_while_running {
-                self.send.send_warning("Cannot modify mods folder while instance is running");
+            if let Some(instance_dir) = dot_minecraft_dir.parent() {
+                let icon_path = instance_dir.join("icon.png");
+                if !icon_path.exists() {
+                    let extracted_icon = dot_minecraft_dir.join("icon.png");
+                    let extracted_pack = dot_minecraft_dir.join("pack.png");
+                    if extracted_icon.exists() {
+                        let _ = crate::fs::fastcopy(&extracted_icon, &icon_path, true, false);
+                    } else if extracted_pack.exists() {
+                        let _ = crate::fs::fastcopy(&extracted_pack, &icon_path, true, false);
+                    }
+                }
             }
         }
-
-        drop(instance_lock_guard);
     }
 
     async fn install_into_content_library(
@@ -1138,6 +1226,151 @@ impl BackendState {
 
         let summary = self.mod_metadata_manager.get_path(&path);
         Ok((path, summary))
+    }
+
+    async fn resolve_instance_icon(
+        &self,
+        files: &[InstallFromContentLibrary],
+        content_files: &[ContentInstallFile],
+    ) -> Option<EmbeddedOrRaw> {
+        // 1. Check if any file's mod_summary already has an icon
+        for file in files {
+            if let Some(ref icon) = file.mod_summary.png_icon {
+                return Some(EmbeddedOrRaw::Raw(icon.clone()));
+            }
+        }
+
+        // 2. Check if any downloaded archive has an embedded icon
+        for file in files {
+            if let Ok(f) = std::fs::File::open(&file.from) {
+                if let Ok(archive) = rc_zip_sync::ReadZip::read_zip(&f) {
+                    let icon_entry = archive.by_name("icon.png")
+                        .or_else(|| archive.by_name("pack.png"))
+                        .or_else(|| archive.by_name("logo.png"))
+                        .or_else(|| archive.by_name("overrides/icon.png"))
+                        .or_else(|| archive.by_name("overrides/pack.png"));
+                    if let Some(entry) = icon_entry {
+                        if let Ok(bytes) = entry.bytes() {
+                            return Some(EmbeddedOrRaw::Raw(UniqueBytes::new(&bytes)));
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. Check content files for Modrinth or CurseForge projects
+        for content_file in content_files {
+            match &content_file.content_source {
+                ContentSource::ModrinthProject { project_id } => {
+                    if let Some(bytes) = self.fetch_modrinth_project_icon(project_id).await {
+                        return Some(EmbeddedOrRaw::Raw(UniqueBytes::new(&bytes)));
+                    }
+                },
+                ContentSource::CurseforgeProject { project_id } => {
+                    if let Some(bytes) = self.fetch_curseforge_project_icon(*project_id).await {
+                        return Some(EmbeddedOrRaw::Raw(UniqueBytes::new(&bytes)));
+                    }
+                },
+                _ => {},
+            }
+
+            match &content_file.download {
+                ContentDownload::Modrinth { project_id, .. } => {
+                    if let Some(bytes) = self.fetch_modrinth_project_icon(project_id).await {
+                        return Some(EmbeddedOrRaw::Raw(UniqueBytes::new(&bytes)));
+                    }
+                },
+                ContentDownload::Curseforge { project_id, .. } => {
+                    if let Some(bytes) = self.fetch_curseforge_project_icon(*project_id).await {
+                        return Some(EmbeddedOrRaw::Raw(UniqueBytes::new(&bytes)));
+                    }
+                },
+                _ => {},
+            }
+        }
+
+        // 4. Also check if any file in `files` is a Modrinth modpack with modrinth.index.json
+        // so that importing a local .mrpack can still resolve the icon from Modrinth if not embedded
+        for file in files {
+            if let Ok(f) = std::fs::File::open(&file.from) {
+                if let Ok(archive) = rc_zip_sync::ReadZip::read_zip(&f) {
+                    if let Some(index_file) = archive.by_name("modrinth.index.json") {
+                        if let Ok(bytes) = index_file.bytes() {
+                            if let Ok(index_json) = serde_json::from_slice::<schema::mrpack::ModrinthIndexJson>(&bytes) {
+                                let version_url = format!("https://api.modrinth.com/v2/version/{}", index_json.version_id);
+                                if let Ok(resp) = self.http_client_provider.redirecting().get(&version_url).send().await {
+                                    if let Ok(version_val) = resp.json::<serde_json::Value>().await {
+                                        if let Some(project_id) = version_val.get("project_id").and_then(|p| p.as_str()) {
+                                            if let Some(bytes) = self.fetch_modrinth_project_icon(project_id).await {
+                                                return Some(EmbeddedOrRaw::Raw(UniqueBytes::new(&bytes)));
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    async fn fetch_modrinth_project_icon(&self, project_id: &str) -> Option<Vec<u8>> {
+        let req = ModrinthProjectRequest { project_id: Arc::from(project_id) };
+        let mut icon_url = None;
+        if let Ok(project) = self.meta.fetch(ModrinthProjectMetadataItem(&req)).await {
+            icon_url = project.icon_url.as_ref().map(|s| s.to_string());
+        }
+
+        if icon_url.is_none() {
+            let url = format!("{}/{}", schema::modrinth::MODRINTH_PROJECT_URL, project_id);
+            if let Ok(resp) = self.http_client_provider.redirecting().get(&url).send().await {
+                if let Ok(json) = resp.json::<serde_json::Value>().await {
+                    if let Some(u) = json.get("icon_url").and_then(|u| u.as_str()) {
+                        icon_url = Some(u.to_string());
+                    }
+                }
+            }
+        }
+
+        let icon_url = icon_url?;
+        let resp = self.http_client_provider.redirecting().get(&icon_url).send().await.ok()?;
+        let bytes = resp.bytes().await.ok()?;
+        Some(bytes.to_vec())
+    }
+
+    async fn fetch_curseforge_project_icon(&self, project_id: u32) -> Option<Vec<u8>> {
+        let mut logo_url = None;
+        if let Ok(project) = self.meta.fetch(CurseforgeProjectItem { project_id }).await {
+            logo_url = project.logo.as_ref().and_then(|l| l.url.as_ref().or(Some(&l.thumbnail_url))).map(|s| s.to_string());
+        }
+
+        if logo_url.is_none() {
+            let url = format!("https://api.curseforge.com/v1/mods/{}", project_id);
+            if let Ok(resp) = self.http_client_provider.redirecting()
+                .get(&url)
+                .header("x-api-key", schema::curseforge::CURSEFORGE_API_KEY)
+                .send()
+                .await
+            {
+                if let Ok(json) = resp.json::<serde_json::Value>().await {
+                    if let Some(logo) = json.get("data").and_then(|d| d.get("logo")) {
+                        if let Some(u) = logo.get("url").and_then(|u| u.as_str()) {
+                            logo_url = Some(u.to_string());
+                        } else if let Some(u) = logo.get("thumbnailUrl").and_then(|u| u.as_str()) {
+                            logo_url = Some(u.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        let logo_url = logo_url?;
+        let resp = self.http_client_provider.redirecting().get(&logo_url).send().await.ok()?;
+        let bytes = resp.bytes().await.ok()?;
+        Some(bytes.to_vec())
     }
 }
 

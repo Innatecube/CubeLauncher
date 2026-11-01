@@ -25,9 +25,8 @@ impl RenderOnce for TitleBar {
             .min_h(rems(3.5625))
             .max_h(rems(3.5625))
             .h(rems(3.5625))
+            .flex_none()
             .p_4()
-            .border_b_1()
-            .border_color(cx.theme().border)
             .text_xl();
 
         if self.content_only {
@@ -96,7 +95,7 @@ impl RenderOnce for TitleBar {
                                     .items_center()
                                     .justify_center()
                                     .content_center()
-                                    .rounded(cx.theme().radius)
+                                    .rounded_none()
                                     .hover(|this| {
                                         let col = if cx.theme().mode.is_dark() {
                                             cx.theme().secondary.lighten(0.1).opacity(0.8)
@@ -156,7 +155,7 @@ impl RenderOnce for WindowControl {
             .size_8()
             .justify_center()
             .content_center()
-            .rounded(cx.theme().radius)
+            .rounded_none()
             .hover(|this| {
                 let col = if self == WindowControl::Close {
                     cx.theme().danger_hover

@@ -5,7 +5,7 @@ use bridge::{
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme as _, Disableable, Icon, IndexPath, Sizable, WindowExt, button::{Button, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputEvent, InputState, NumberInput, NumberInputEvent, Textarea, TextareaState}, notification::{Notification, NotificationType}, scroll::ScrollableElement, select::{SearchableVec, Select, SelectEvent, SelectState}, skeleton::Skeleton, v_flex
+    ActiveTheme as _, Disableable, Icon, IndexPath, Sizable, StyledExt as _, WindowExt, button::{Button, ButtonVariants}, checkbox::Checkbox, dialog::Dialog, h_flex, input::{Input, InputEvent, InputState, NumberInput, NumberInputEvent, Textarea, TextareaState}, notification::{Notification, NotificationType}, scroll::ScrollableElement, select::{SearchableVec, Select, SelectEvent, SelectState}, skeleton::Skeleton, slider::{Slider, SliderEvent, SliderState}, v_flex
 };
 use schema::{fabric_loader_manifest::FabricLoaderManifest, forge::{ForgeMavenManifest, NeoforgeMavenManifest}, instance::{AUTO_LIBRARY_PATH_GLFW, AUTO_LIBRARY_PATH_OPENAL, InstanceJvmBinaryConfiguration, InstanceJvmFlagsConfiguration, InstanceLinuxWrapperConfiguration, InstanceMemoryConfiguration, InstanceSystemLibrariesConfiguration, InstanceWrapperCommandConfiguration, LwjglLibraryPath, UpdateChannel}, loader::Loader, version_manifest::MinecraftVersionManifest};
 use strum::IntoEnumIterator;
@@ -43,8 +43,9 @@ pub struct InstanceSettingsSubpage {
     sandbox: bool,
 
     memory_override_enabled: bool,
-    memory_min_input_state: Entity<InputState>,
-    memory_max_input_state: Entity<InputState>,
+    memory_slider_state: Entity<SliderState>,
+    _memory_min_input_state: Entity<InputState>,
+    _memory_max_input_state: Entity<InputState>,
     wrapper_command_enabled: bool,
     wrapper_command_input_state: Entity<TextareaState>,
     jvm_flags_enabled: bool,
@@ -212,6 +213,17 @@ impl InstanceSettingsSubpage {
         cx.subscribe_in(&memory_max_input_state, window, Self::on_memory_step).detach();
         cx.subscribe(&memory_max_input_state, Self::on_memory_changed).detach();
 
+        let total_ram_mb = crate::settings::java::get_system_ram_mb().max(2048);
+        let current_max = if memory.max >= 1024 { memory.max.min(total_ram_mb) } else { 4096.min(total_ram_mb) };
+        let memory_slider_state = cx.new(|_| {
+            SliderState::new()
+                .max(total_ram_mb as f32)
+                .min(1024.0)
+                .step(256.0)
+                .default_value(current_max as f32)
+        });
+        cx.subscribe(&memory_slider_state, Self::on_memory_slider_changed).detach();
+
         let wrapper_command_input_state = cx.new(|cx| {
             TextareaState::new(window, cx).auto_grow(1, 8).default_value(wrapper_command.flags)
         });
@@ -239,8 +251,9 @@ impl InstanceSettingsSubpage {
             sandbox_available,
             sandbox,
             memory_override_enabled: memory.enabled,
-            memory_min_input_state,
-            memory_max_input_state,
+            memory_slider_state,
+            _memory_min_input_state: memory_min_input_state,
+            _memory_max_input_state: memory_max_input_state,
             wrapper_command_enabled: wrapper_command.enabled,
             wrapper_command_input_state,
             jvm_flags_enabled: jvm_flags.enabled,
@@ -611,14 +624,34 @@ impl InstanceSettingsSubpage {
         }
     }
 
+    pub fn on_memory_slider_changed(
+        &mut self,
+        _: Entity<SliderState>,
+        event: &SliderEvent,
+        cx: &mut Context<Self>,
+    ) {
+        let SliderEvent::Change(change) = event else { return; };
+        let val = (change.start() / 256.0).round() * 256.0;
+        let new_max = (val as u32).clamp(1024, 131072);
+
+        self.backend_handle.send(MessageToBackend::SetInstanceMemory {
+            id: self.instance_id,
+            memory: InstanceMemoryConfiguration {
+                enabled: self.memory_override_enabled,
+                min: 1024,
+                max: new_max,
+            },
+        });
+        cx.notify();
+    }
+
     fn get_memory_configuration(&self, cx: &App) -> InstanceMemoryConfiguration {
-        let min = self.memory_min_input_state.read(cx).value().parse::<u32>().unwrap_or(0);
-        let max = self.memory_max_input_state.read(cx).value().parse::<u32>().unwrap_or(0);
+        let max = (self.memory_slider_state.read(cx).value().start() as u32).max(1024);
 
         InstanceMemoryConfiguration {
             enabled: self.memory_override_enabled,
-            min,
-            max
+            min: 1024,
+            max,
         }
     }
 
@@ -743,15 +776,9 @@ impl InstanceSettingsSubpage {
 impl Render for InstanceSettingsSubpage {
     fn render(&mut self, _window: &mut gpui::Window, cx: &mut gpui::Context<Self>) -> impl gpui::IntoElement {
         let theme_radius = cx.theme().radius;
-        let theme_border = cx.theme().border;
-
-        let header = h_flex()
-            .gap_3()
-            .mb_1()
-            .ml_1()
-            .child(div().text_lg().child(t::settings::title()));
-
         let memory_override_enabled = self.memory_override_enabled;
+        let total_ram_mb = crate::settings::java::get_system_ram_mb();
+        let current_max_mb = (self.memory_slider_state.read(cx).value().start() as u32).max(1024);
         let wrapper_command_enabled = self.wrapper_command_enabled;
         let jvm_flags_enabled = self.jvm_flags_enabled;
         let jvm_binary_enabled = self.jvm_binary_enabled;
@@ -761,10 +788,9 @@ impl Render for InstanceSettingsSubpage {
                 Icon::default().path(path).size_8().min_w_8().min_h_8().into_any_element()
             },
             EmbeddedOrRaw::Raw(data) => {
-                let radius = theme_radius;
                 let transform = png_render_cache::ImageTransformation::Resize { width: 32, height: 32 };
                 png_render_cache::render_with_transform(data, transform, cx)
-                    .rounded(radius).size_8().min_w_8().min_h_8().into_any_element()
+                    .rounded_none().size_8().min_w_8().min_h_8().into_any_element()
             },
         });
 
@@ -828,7 +854,7 @@ impl Render for InstanceSettingsSubpage {
 
         match self.version_state {
             TypelessFrontendMetadataResult::Loading => {
-                version_content = version_content.child(Skeleton::new().w_full().min_h_8().max_h_8().rounded_md());
+                version_content = version_content.child(Skeleton::new().w_full().min_h_8().max_h_8().rounded_none());
             },
             TypelessFrontendMetadataResult::Loaded => {
                 version_content = version_content.child(
@@ -850,7 +876,7 @@ impl Render for InstanceSettingsSubpage {
         if self.loader != Loader::Vanilla {
             match self.loader_versions_state {
                 TypelessFrontendMetadataResult::Loading => {
-                    version_content = version_content.child(Skeleton::new().w_full().min_h_8().max_h_8().rounded_md())
+                    version_content = version_content.child(Skeleton::new().w_full().min_h_8().max_h_8().rounded_none())
                 },
                 TypelessFrontendMetadataResult::Loaded => {
                     version_content = version_content.child(
@@ -918,30 +944,105 @@ impl Render for InstanceSettingsSubpage {
             .size_full()
             .overflow_y_scrollbar()
             .child(v_flex()
-                .gap_1()
-                .child(Checkbox::new("memory").label(t::instance::memory()).checked(memory_override_enabled).on_click(cx.listener(|page, value, _, cx| {
-                    if page.memory_override_enabled != *value {
-                        page.memory_override_enabled = *value;
-                        page.backend_handle.send(MessageToBackend::SetInstanceMemory {
-                            id: page.instance_id,
-                            memory: page.get_memory_configuration(cx)
-                        });
-                        cx.notify();
-                    }
-                })))
-                .child(h_flex()
-                    .gap_1()
-                    .child(v_flex()
-                        .w_full()
-                        .gap_1()
-                        .child(NumberInput::new(&self.memory_min_input_state).small().suffix(t::common::size::mib()).disabled(!memory_override_enabled))
-                        .child(NumberInput::new(&self.memory_max_input_state).small().suffix(t::common::size::mib()).disabled(!memory_override_enabled))
-                    )
-                    .child(v_flex()
-                        .gap_1()
-                        .line_height(px(24.0))
-                        .child(t::common::min())
-                        .child(t::common::max()))
+                .gap_2()
+                .child(
+                    h_flex()
+                        .justify_between()
+                        .items_center()
+                        .child(
+                            Checkbox::new("memory")
+                                .label(t::instance::memory())
+                                .checked(memory_override_enabled)
+                                .on_click(cx.listener(|page, value, _, cx| {
+                                    if page.memory_override_enabled != *value {
+                                        page.memory_override_enabled = *value;
+                                        page.backend_handle.send(MessageToBackend::SetInstanceMemory {
+                                            id: page.instance_id,
+                                            memory: page.get_memory_configuration(cx)
+                                        });
+                                        cx.notify();
+                                    }
+                                }))
+                        )
+                        .child(
+                            div()
+                                .text_xs()
+                                .font_semibold()
+                                .text_color(if memory_override_enabled { cx.theme().primary } else { cx.theme().muted_foreground })
+                                .child(format!("{:.1} GB ({} MB)", current_max_mb as f32 / 1024.0, current_max_mb))
+                        )
+                )
+                .child(
+                    v_flex()
+                        .gap_1p5()
+                        .px(px(8.0))
+                        .child(
+                            Slider::new(&self.memory_slider_state)
+                                .disabled(!memory_override_enabled)
+                        )
+                        .child(
+                            h_flex()
+                                .justify_between()
+                                .text_xs()
+                                .text_color(cx.theme().muted_foreground)
+                                .child("1.0 GB")
+                                .child(if !memory_override_enabled {
+                                    div().text_color(cx.theme().muted_foreground).child("(Using Global Default)")
+                                } else {
+                                    div()
+                                })
+                                .child(format!("{:.0} GB", total_ram_mb as f32 / 1024.0))
+                        )
+                        .when(memory_override_enabled, |this| {
+                            this.child(
+                                h_flex()
+                                    .gap_1p5()
+                                    .pt_1()
+                                    .children(
+                                        [2048, 4096, 6144, 8192, 12288, 16384]
+                                            .into_iter()
+                                            .filter(|&mb| mb <= total_ram_mb)
+                                            .map(|mb| {
+                                                let is_active = (current_max_mb as i32 - mb as i32).abs() < 128;
+                                                div()
+                                                    .id(("instance-ram-preset", mb))
+                                                    .px_2()
+                                                    .py_0p5()
+                                                    .text_xs()
+                                                    .font_medium()
+                                                    .rounded_none()
+                                                    .cursor_pointer()
+                                                    .when_else(is_active, |this| {
+                                                        this.bg(cx.theme().primary.opacity(0.2))
+                                                            .text_color(cx.theme().primary)
+                                                            .border_1()
+                                                            .border_color(cx.theme().primary)
+                                                    }, |this| {
+                                                        this.bg(cx.theme().secondary)
+                                                            .text_color(cx.theme().foreground)
+                                                            .border_1()
+                                                            .border_color(cx.theme().border)
+                                                            .hover(|h| h.bg(cx.theme().secondary_hover))
+                                                    })
+                                                    .child(format!("{} GB", mb / 1024))
+                                                    .on_click(cx.listener(move |page, _, window, cx| {
+                                                        page.memory_slider_state.update(cx, |slider, cx| {
+                                                            slider.set_value(mb as f32, window, cx);
+                                                        });
+                                                        page.backend_handle.send(MessageToBackend::SetInstanceMemory {
+                                                            id: page.instance_id,
+                                                            memory: InstanceMemoryConfiguration {
+                                                                enabled: page.memory_override_enabled,
+                                                                min: 1024,
+                                                                max: mb,
+                                                            },
+                                                        });
+                                                        cx.notify();
+                                                    }))
+                                            })
+                                    )
+                            )
+                        })
                 )
             ).child(v_flex()
                 .gap_1()
@@ -1212,15 +1313,35 @@ impl Render for InstanceSettingsSubpage {
             .child(actions_content);
 
         v_flex()
-            .p_4()
             .size_full()
-            .child(header)
-            .child(div()
-                .size_full()
-                .border_1()
-                .rounded(theme_radius)
-                .border_color(theme_border)
-                .child(sections)
-            )
+            .h(px(510.0))
+            .child(sections)
     }
+}
+
+pub fn open_instance_settings_modal(
+    instance: &Entity<InstanceEntry>,
+    data: &DataEntities,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    crate::root::capture_backdrop_blur(window, cx);
+    let instance_name = instance.read(cx).name.clone();
+    let backend_handle = data.backend_handle.clone();
+    let instance_clone = instance.clone();
+    let data_clone = data.clone();
+    let settings_state = cx.new(|cx| {
+        InstanceSettingsSubpage::new(&instance_clone, &data_clone, backend_handle, window, cx)
+    });
+
+    window.open_dialog(cx, move |dialog, _, _| {
+        dialog
+            .w(px(940.0))
+            .h(px(580.0))
+            .margin_top(px(32.0))
+            .title(format!("{} — {}", t::settings::title(), instance_name))
+            .close_button(true)
+            .overlay_closable(true)
+            .child(settings_state.clone())
+    });
 }

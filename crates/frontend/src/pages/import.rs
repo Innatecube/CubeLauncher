@@ -8,11 +8,12 @@ use gpui_component::{
 use rustc_hash::FxHashSet;
 use strum::IntoEnumIterator;
 
-use crate::{component::{path_label::PathLabel, responsive_grid::ResponsiveGrid}, entity::{DataEntities, instance::InstanceEntries}, icon::PandoraIcon, pages::page::Page};
+use crate::{component::{path_label::PathLabel, responsive_grid::ResponsiveGrid}, entity::{DataEntities, instance::InstanceEntries, task_manager::TaskManager}, icon::PandoraIcon, pages::page::Page};
 
 pub struct ImportPage {
     backend_handle: BackendHandle,
     instances: Entity<InstanceEntries>,
+    tasks: Entity<TaskManager>,
     import_from: Option<OtherLauncher>,
     import_from_path: Option<PathLabel>,
     import_job: Option<ImportFromOtherLauncherJob>,
@@ -29,6 +30,7 @@ impl ImportPage {
         Self {
             backend_handle: data.backend_handle.clone(),
             instances: data.instances.clone(),
+            tasks: data.tasks.clone(),
             import_from: None,
             import_from_path: None,
             import_job: None,
@@ -146,7 +148,10 @@ impl Render for ImportPage {
                                     modal_action: modal_action.clone(),
                                 });
 
-                                crate::modals::generic::show_notification(window, cx, t::instance::content::install::error().into(), modal_action);
+                                let import_name = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "Importing modpack".into());
+                                page.tasks.update(cx, |t, cx| {
+                                    t.add_task(None, import_name.into(), None, modal_action.clone(), true, cx);
+                                });
                             });
                         })
                     })))
@@ -160,7 +165,7 @@ impl Render for ImportPage {
                 .border_1()
                 .gap_2()
                 .p_2()
-                .rounded(cx.theme().radius_lg)
+                .rounded_none()
                 .border_color(cx.theme().border);
 
             let pick_folder = cx.listener(move |_, _: &ClickEvent, _, cx| {
@@ -219,7 +224,7 @@ impl Render for ImportPage {
                         .w_full()
                         .border_1()
                         .p_2()
-                        .rounded(cx.theme().radius)
+                        .rounded_none()
                         .border_color(cx.theme().border)
                         .max_h_64()
                         .child(v_flex().overflow_y_scrollbar().gap_2().children(
@@ -230,7 +235,7 @@ impl Render for ImportPage {
                                         .child(Checkbox::new(index).checked(false).disabled(true).label(&*path.to_string_lossy()))
                                         .child(h_flex()
                                             .gap_2()
-                                            .line_height(rems(1.0))
+                                            .line_height(relative(1.25))
                                             .text_color(cx.theme().button_warning_foreground)
                                             .child(PandoraIcon::TriangleAlert)
                                             .child(t::import::already_exists())

@@ -668,7 +668,12 @@ impl ModMetadataManager {
         modpack_files.par_extend(summaries);
 
         let mut png_icon = None;
-        if let Some(icon) = archive.by_name("icon.png") {
+        let icon_entry = archive.by_name("icon.png")
+            .or_else(|| archive.by_name("pack.png"))
+            .or_else(|| archive.by_name("logo.png"))
+            .or_else(|| archive.by_name("overrides/icon.png"))
+            .or_else(|| archive.by_name("overrides/pack.png"));
+        if let Some(icon) = icon_entry {
             png_icon = load_icon(icon);
         }
 
@@ -813,7 +818,12 @@ impl ModMetadataManager {
         modpack_files.par_extend(summaries);
 
         let mut png_icon = None;
-        if let Some(icon) = archive.by_name("icon.png") {
+        let icon_entry = archive.by_name("icon.png")
+            .or_else(|| archive.by_name("pack.png"))
+            .or_else(|| archive.by_name("logo.png"))
+            .or_else(|| archive.by_name("overrides/icon.png"))
+            .or_else(|| archive.by_name("overrides/pack.png"));
+        if let Some(icon) = icon_entry {
             png_icon = load_icon(icon);
         }
 
@@ -992,6 +1002,11 @@ fn load_icon_bytes(icon_bytes: &[u8]) -> Option<UniqueBytes> {
             FilterType::Nearest
         };
         image = image.resize(64, 64, filter);
+        changed = true;
+    }
+
+    let is_png = image::guess_format(&icon_bytes).map(|f| f == image::ImageFormat::Png).unwrap_or(false);
+    if !is_png {
         changed = true;
     }
 

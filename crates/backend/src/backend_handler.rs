@@ -5,7 +5,7 @@ use bridge::{
     install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath, InstallTarget}, instance::{ContentFolder, ContentSummary, ContentType, InstanceID}, keep_alive::KeepAlive, message::{AccountCapesResult, AccountSkinResult, EmbeddedOrRaw, GameOutputMsg, LogFiles, MessageToBackend, MessageToFrontend, QuickPlayLaunch}, meta::MetadataResult, modal_action::{ModalAction, ModalActionVisitUrl, ProgressTrackerFinishType}, serial::AtomicOptionSerial
 };
 use futures::TryFutureExt;
-use schema::{auxiliary::AuxiliaryContentMeta, content::{ContentInstallReason, ContentSource}, curseforge::CurseforgeGetModFilesRequest, loader::Loader, minecraft_profile::{MinecraftProfileResponse, SkinVariant}, modrinth::ModrinthLoader, quickplay::QuickplayPreset, version::{LaunchArgument, LaunchArgumentValue}};
+use schema::{auxiliary::AuxiliaryContentMeta, content::{ContentInstallReason, ContentSource}, curseforge::CurseforgeGetModFilesRequest, loader::Loader, minecraft_profile::{MinecraftProfileResponse, SkinVariant}, modrinth::ModrinthLoader, quickplay::QuickplayPreset, unique_bytes::UniqueBytes, version::{LaunchArgument, LaunchArgumentValue}};
 use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
 use tokio::{io::AsyncBufReadExt, sync::{Semaphore, TryAcquireError}};
@@ -224,23 +224,43 @@ impl BackendState {
 
                 match icon {
                     Some(EmbeddedOrRaw::Raw(image_bytes)) => {
-                        if let Ok(format) = image::guess_format(&*image_bytes) {
+                        let png_bytes = if let Ok(format) = image::guess_format(&*image_bytes) {
                             if format == image::ImageFormat::Png {
-                                let icon_path = root_path.join("icon.png");
-                                if let Err(err) = crate::fs::write_safe(&icon_path, &*image_bytes) {
-                                    log::error!("Unable to save instance icon: {:?}", err);
-                                    self.send.send_error("Unable to save instance icon");
-                                    return;
-                                }
-                                if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
-                                    instance.icon = Some(image_bytes);
-                                    self.send.send(instance.create_modify_message());
+                                Some(image_bytes.to_vec())
+                            } else if let Ok(dyn_image) = image::load_from_memory(&*image_bytes) {
+                                let mut buf = Vec::new();
+                                if dyn_image.write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png).is_ok() {
+                                    Some(buf)
+                                } else {
+                                    None
                                 }
                             } else {
-                                self.send.send_error("Unable to apply icon: only pngs are supported");
+                                None
+                            }
+                        } else if let Ok(dyn_image) = image::load_from_memory(&*image_bytes) {
+                            let mut buf = Vec::new();
+                            if dyn_image.write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png).is_ok() {
+                                Some(buf)
+                            } else {
+                                None
                             }
                         } else {
-                            self.send.send_error("Unable to apply icon: unknown format");
+                            None
+                        };
+
+                        if let Some(png) = png_bytes {
+                            let icon_path = root_path.join("icon.png");
+                            if let Err(err) = crate::fs::write_safe(&icon_path, &png) {
+                                log::error!("Unable to save instance icon: {:?}", err);
+                                self.send.send_error("Unable to save instance icon");
+                                return;
+                            }
+                            if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+                                instance.icon = Some(UniqueBytes::new(&png));
+                                self.send.send(instance.create_modify_message());
+                            }
+                        } else {
+                            self.send.send_error("Unable to apply icon: unsupported image format");
                         }
                     },
                     Some(EmbeddedOrRaw::Embedded(_)) => {
@@ -320,6 +340,15 @@ impl BackendState {
                 if let Some(id) = id {
                     self.start_instance(id, quick_play, None, Default::default()).await
                 }
+            },
+            MessageToBackend::PrepareInstanceFiles {
+                id,
+                modal_action,
+            } => {
+                let this = self.clone();
+                tokio::task::spawn(async move {
+                    this.prepare_instance(id, modal_action).await;
+                });
             },
             MessageToBackend::StartInstance {
                 id,
@@ -2098,6 +2127,43 @@ impl BackendState {
                     instance.configuration.modify(|cfg| cfg.group = group);
                     self.send.send(instance.create_modify_message());
                 }
+            }
+        }
+    }
+
+    async fn prepare_instance(
+        self: &Arc<Self>,
+        id: InstanceID,
+        modal_action: ModalAction,
+    ) {
+        let (dot_minecraft, mut configuration) = if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+            (instance.dot_minecraft_path.clone(), instance.configuration.get().clone())
+        } else {
+            modal_action.set_finished_with_error("Unknown instance id".into());
+            return;
+        };
+
+        crate::launch::apply_global_launch_defaults(&mut configuration, self.config.lock().get());
+
+        scopeguard::defer! {
+            modal_action.set_finished();
+        }
+
+        let tracker = modal_action.push_tracker("Preparing files".into());
+        let http_client = self.http_client_provider.redirecting();
+
+        let result = self.launcher.prepare_instance_files(
+            &http_client,
+            dot_minecraft,
+            configuration,
+            &tracker,
+            &modal_action,
+        ).await;
+
+        if let Err(err) = result {
+            if !matches!(err, crate::launch::LaunchError::CancelledByUser) {
+                log::warn!("Error preparing instance files: {:?}", &err);
+                modal_action.set_finished_with_error(format!("{}", &err).into());
             }
         }
     }

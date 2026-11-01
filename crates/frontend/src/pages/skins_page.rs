@@ -4,7 +4,7 @@ use bridge::{message::{AccountCapesResult, AccountSkinResult, MessageToBackend, 
 use futures::FutureExt;
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme, Disableable, Icon, Sizable, WindowExt, button::{Button, ButtonVariants}, h_flex, input::{Input, InputState}, notification::{Notification, NotificationType}, popover::Popover, scroll::ScrollableElement, skeleton::Skeleton, spinner::Spinner, v_flex}
+    ActiveTheme, Disableable, Icon, Sizable, StyledExt, WindowExt, button::{Button, ButtonVariants}, h_flex, input::{Input, InputState}, notification::{Notification, NotificationType}, popover::Popover, scroll::ScrollableElement, skeleton::Skeleton, spinner::Spinner, v_flex}
 ;
 use once_cell::sync::Lazy;
 use rustc_hash::FxHashMap;
@@ -485,7 +485,7 @@ impl Render for SkinsPage {
                                 .max_size(px(144.0))
                                 .text_base()
                                 .id(("select-cape", i))
-                                .rounded(radius)
+                                .rounded_none()
                                 .items_center()
                                 .justify_center()
                                 .p(padding)
@@ -728,8 +728,8 @@ impl Render for SkinsPage {
                     let thumbnail = self.skin_thumbnail_cache.update(cx, |cache, cx| {
                         cache.get_or_queue(skin, variant, cx)
                     });
-                    let thumb_w = px(crate::skin_thumbnail_cache::THUMB_WIDTH as f32);
-                    let thumb_h = px(crate::skin_thumbnail_cache::THUMB_HEIGHT as f32);
+                    let thumb_w = px(crate::skin_thumbnail_cache::DISPLAY_THUMB_WIDTH);
+                    let thumb_h = px(crate::skin_thumbnail_cache::DISPLAY_THUMB_HEIGHT);
                     if let Some(img) = thumbnail {
                         gpui::img(img)
                             .w(thumb_w)
@@ -752,10 +752,10 @@ impl Render for SkinsPage {
 
                 Some(div()
                     .id(("select-skin", i))
-                    .rounded(radius)
+                    .rounded_none()
                     .text_base()
-                    .w(px(144.0))
-                    .h(px(156.0))
+                    .w(px(148.0))
+                    .h(px(204.0))
                     .flex()
                     .items_center()
                     .justify_center()
@@ -776,11 +776,14 @@ impl Render for SkinsPage {
                             h_flex()
                                 .gap_1()
                                 .items_center()
-                                .px_1p5()
+                                .px_2()
                                 .py_0p5()
-                                .rounded(radius)
+                                .rounded_none()
                                 .bg(list_active)
+                                .border_1()
+                                .border_color(list_active_border.opacity(0.5))
                                 .text_xs()
+                                .font_bold()
                                 .child(Icon::new(PandoraIcon::Flag).size(px(12.0)))
                                 .child("In Use")
                                 .absolute()
@@ -876,8 +879,6 @@ impl Render for SkinsPage {
             .child(self.player_model_widget.clone());
 
         h_flex()
-            .flex_1()
-            .min_h_0()
             .size_full()
             .p_4()
             .gap_4()

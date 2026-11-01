@@ -375,21 +375,17 @@ impl Theme {
     /// [`gpui::Styled::rounded_full`], or reach for
     /// [`crate::ThemeStyled::rounded_full_style`] when styling an element.
     pub fn radius_full(&self) -> Pixels {
-        if self.radius.is_zero() {
-            px(0.)
-        } else {
-            RADIUS_FULL
-        }
+        px(0.)
     }
 
     pub fn radius_tokens(&self) -> RadiusTokens {
         RadiusTokens {
             none: px(0.),
-            sm: self.radius / 2.,
-            md: self.radius,
-            lg: self.radius_lg,
-            xl: self.radius * 2.,
-            full: RADIUS_FULL,
+            sm: px(0.),
+            md: px(0.),
+            lg: px(0.),
+            xl: px(0.),
+            full: px(0.),
         }
     }
 
@@ -567,8 +563,8 @@ impl From<&ThemeColor> for Theme {
                 "DejaVu Sans Mono".into()
             },
             mono_font_size: px(13.),
-            radius: px(6.),
-            radius_lg: px(8.),
+            radius: px(0.),
+            radius_lg: px(0.),
             shadow: true,
             focus_ring: true,
             scrollbar_mode: ScrollbarMode::default(),

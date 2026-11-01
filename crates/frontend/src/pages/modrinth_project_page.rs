@@ -3,7 +3,7 @@ use std::sync::{Arc};
 use bridge::{instance::{ContentFolder, InstanceID}, meta::MetadataRequest};
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme, Icon, WindowExt, button::{Button, ButtonVariants}, h_flex, notification::NotificationType, skeleton::Skeleton, tab::{Tab, TabBar}, text::TextView, v_flex
+    ActiveTheme, Icon, WindowExt, button::{Button, ButtonCustomVariant, ButtonVariants}, h_flex, notification::NotificationType, skeleton::Skeleton, tab::{Tab, TabBar}, text::TextView, v_flex
 };
 use schema::{content::ContentSource, loader::Loader, modrinth::{
     ModrinthProjectRequest, ModrinthProjectResult, ModrinthProjectType,
@@ -199,7 +199,7 @@ impl Render for ModrinthProjectPage {
             let project = Arc::clone(project);
 
             let icon = gpui::img(SharedUri::from(project.icon_url.as_ref().map(|url| url.to_string()).unwrap_or_else(|| "".to_string())))
-                    .with_fallback(|| Skeleton::new().rounded_lg().size_20().into_any_element());
+                    .with_fallback(|| Skeleton::new().rounded_none().size_20().into_any_element());
 
             let (env_icon, env_name) = env_display(project.client_side.unwrap(), project.server_side.unwrap());
 
@@ -257,10 +257,34 @@ impl Render for ModrinthProjectPage {
                     PrimaryAction::Install
                 };
 
-                Button::new("install_project")
+                let is_install_like = matches!(
+                    primary_action,
+                    PrimaryAction::Install
+                        | PrimaryAction::Reinstall
+                        | PrimaryAction::InstallLatest
+                        | PrimaryAction::Update(..)
+                );
+
+                let custom_install = ButtonCustomVariant::new(cx)
+                    .color(rgb(0x04242e).into())
+                    .foreground(rgb(0x00f0ff).into())
+                    .hover(rgb(0x063e4d).into())
+                    .active(rgb(0x031c24).into());
+
+                let mut install_btn = Button::new("install_project")
                     .label(primary_action.text())
-                    .icon(primary_action.icon())
-                    .with_variant(primary_action.button_variant())
+                    .icon(primary_action.icon());
+
+                if is_install_like {
+                    install_btn = install_btn
+                        .custom(custom_install)
+                        .border_1()
+                        .border_color(rgb(0x00e5ff));
+                } else {
+                    install_btn = install_btn.with_variant(primary_action.button_variant());
+                }
+
+                install_btn
                     .my_auto()
                     .px_6()
                     .on_click({
@@ -420,12 +444,12 @@ impl Render for ModrinthProjectPage {
                         .flex_wrap()
                         .gap_3()
                         .children(gallery.into_iter().flatten().enumerate().map(|(idx, img)| {
-                            v_flex().rounded_lg().h_80()
+                            v_flex().rounded_none().h_80()
                                 .child(gpui::img(SharedUri::from(&img.url))
                                     .w_full()
                                     .h_72()
                                     .cursor_pointer()
-                                    .rounded_t_lg()
+                                    .rounded_none()
                                     .id(("gallery_img", idx))
                                     .on_click({
                                         let url = img.url.clone();
@@ -449,7 +473,7 @@ impl Render for ModrinthProjectPage {
 
             v_flex().p_4().gap_3().w_full()
                 .child(h_flex().gap_4()
-                    .child(icon.rounded_lg().size_24().min_w_24().min_h_24())
+                    .child(icon.rounded_none().size_24().min_w_24().min_h_24())
                     .child(v_flex().w_full().line_height(relative(1.1)).gap_2()
                         .child(div().text_xl().overflow_hidden().child(project.title.clone()
                             .map(SharedString::new)
@@ -465,21 +489,21 @@ impl Render for ModrinthProjectPage {
         } else {
             v_flex().p_4().gap_3().w_full()
                 .child(h_flex().gap_4()
-                    .child(Skeleton::new().rounded_lg().size_24().min_w_24().min_h_24())
+                    .child(Skeleton::new().rounded_none().size_24().min_w_24().min_h_24())
                     .child(v_flex().w_full()
                         .child(h_flex().gap_4().mr_4().justify_between()
                             .child(v_flex().w_full().gap_2().mr_auto()
                                 .child(Skeleton::new().h_6())
                                 .child(Skeleton::new().h_12())
                             )
-                            .child(Skeleton::new().h_12().w_32().rounded_md())
+                            .child(Skeleton::new().h_12().w_32().rounded_none())
                         )
-                        .child(Skeleton::new().h_6().w_full().rounded_md())
+                        .child(Skeleton::new().h_6().w_full().rounded_none())
                     )
                 )
-                .child(Skeleton::new().h_6().w_64().rounded_md())
-                .child(Skeleton::new().h_6().w_64().rounded_lg())
-                .child(Skeleton::new().h_6().w_64().rounded_md())
+                .child(Skeleton::new().h_6().w_64().rounded_none())
+                .child(Skeleton::new().h_6().w_64().rounded_none())
+                .child(Skeleton::new().h_6().w_64().rounded_none())
                 .into_any_element()
         };
 

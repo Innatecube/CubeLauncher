@@ -157,8 +157,8 @@ pub trait ThemeStyled: Styled + Sized {
     /// owns. A hardcoded `rounded_full` survives [`crate::Theme::radius`] being
     /// set to zero, which leaves avatars, badge dots and slider thumbs round in
     /// a UI that is square everywhere else. See [`crate::Theme::radius_full`].
-    fn rounded_full_style(self, cx: &App) -> Self {
-        self.rounded(cx.theme().radius_full())
+    fn rounded_full_style(self, _cx: &App) -> Self {
+        self.rounded_none()
     }
 }
 
@@ -258,6 +258,6 @@ impl<T: Styled + Sized> ThemeStyled for T {
         self.bg(theme.popover)
             .text_color(theme.popover_foreground)
             .shadow(popover_shadow(popover_ring(cx), 1.))
-            .rounded(theme.radius)
+            .rounded_none()
     }
 }

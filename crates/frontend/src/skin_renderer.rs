@@ -331,9 +331,9 @@ impl BodyPartDef {
                 }
             }
 
-            let dot0 = rn.dot(light0).clamp(0.0, 1.0);
-            let dot1 = rn.dot(light1).clamp(0.0, 1.0);
-            let accum = ((dot0 + dot1).min(1.0) * 0.4 + 0.6).clamp(0.0, 1.0);
+            let dot0 = rn.dot(light0).max(0.0);
+            let dot1 = rn.dot(light1).max(0.0);
+            let accum = (0.72 + 0.18 * dot0 + 0.10 * dot1).clamp(0.0, 1.0);
             let shade = (accum * 255.0) as u8;
 
             // Transform vertices
@@ -834,8 +834,9 @@ fn collect_quads(
     };
     let mut projected_quads: Vec<ProjectedQuad> = Vec::new();
 
-    let light0 = V3::new(0.16169041669088866, 0.8084520834544432, -0.5659164584181102);
-    let light1 = V3::new(-0.16169041669088866, 0.8084520834544432, 0.5659164584181102);
+    // Clean forward-facing directional lighting (key light from top-front-right, soft fill from top-front-left)
+    let light0 = V3::new(0.3220, 0.6844, 0.6542);
+    let light1 = V3::new(-0.2764, 0.5133, 0.8122);
 
     for part in parts.iter() {
         part.add_projected_quads(&mut projected_quads, &rot, light0, light1, sway_progress);

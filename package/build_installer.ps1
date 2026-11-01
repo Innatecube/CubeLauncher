@@ -23,9 +23,15 @@ if (-not $iscc) {
 Write-Host "Using Inno Setup compiler at: $iscc" -ForegroundColor Cyan
 Write-Host "Compiling package\CubeLauncher.iss..." -ForegroundColor Cyan
 
-& $iscc "package\CubeLauncher.iss"
+$tempDir = Join-Path $env:TEMP "CubeLauncherDist"
+New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+
+& $iscc /O"$tempDir" "package\CubeLauncher.iss"
 
 if ($LASTEXITCODE -eq 0) {
+    if (Test-Path "$tempDir\CubeLauncher-Setup.exe") {
+        Move-Item "$tempDir\CubeLauncher-Setup.exe" "dist\CubeLauncher-Setup.exe" -Force
+    }
     Write-Host "`nSuccessfully created dist\CubeLauncher-Setup.exe!" -ForegroundColor Green
 } else {
     Write-Error "Installer compilation failed with code $LASTEXITCODE"

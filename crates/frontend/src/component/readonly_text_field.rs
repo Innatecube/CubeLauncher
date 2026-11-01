@@ -905,7 +905,7 @@ impl Render for ReadonlyTextFieldWithControls {
 
         let bar = h_flex()
             .w_full()
-            .rounded(cx.theme().radius)
+            .rounded_none()
             .flex_1()
             .gap_4()
             .child(search)
@@ -930,7 +930,7 @@ impl Render for ReadonlyTextFieldWithControls {
             .child(
                 h_flex()
                     .size_full()
-                    .rounded(cx.theme().radius)
+                    .rounded_none()
                     .border_1()
                     .border_color(cx.theme().border)
                     .child(ReadonlyTextFieldComponent {

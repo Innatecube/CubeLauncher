@@ -264,14 +264,14 @@ impl TabBar {
                         .w_full()
                         .h(inner_height)
                         .bg(cx.theme().tokens.background)
-                        .rounded(inner_radius)
+                        .rounded_none()
                         .shadow(raised_shadow()),
                 ),
                 TabVariant::Pill => el.flex().items_center().child(
                     div()
                         .size_full()
                         .bg(cx.theme().tokens.primary)
-                        .rounded(cx.theme().radius_full()),
+                        .rounded_none(),
                 ),
                 TabVariant::Underline => el.child(
                     div()
@@ -495,7 +495,7 @@ impl RenderOnce for TabBar {
                     )
                 },
             )
-            .rounded(self.variant.tab_bar_radius(self.size, cx))
+            .rounded_none()
             .paddings(paddings)
             .refine_style(&self.style)
             .when_some(self.prefix, |this, prefix| this.child(prefix))

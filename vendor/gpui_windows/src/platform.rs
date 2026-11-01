@@ -1056,11 +1056,12 @@ impl WindowsPlatformInner {
             return false;
         };
         let mut lock = all_windows.write();
-        let index = lock
+        if let Some(index) = lock
             .iter()
             .position(|handle| handle.as_raw() == target_window)
-            .unwrap();
-        lock.remove(index);
+        {
+            lock.remove(index);
+        }
 
         lock.is_empty()
     }

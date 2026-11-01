@@ -5,7 +5,7 @@ use bridge::{
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme as _, IndexPath, Sizable, WindowExt, button::{Button, ButtonVariants, DropdownButton}, h_flex, input::SelectAll, list::{List, ListState}, menu::PopupMenuItem, notification::{Notification, NotificationType}, select::{Select, SelectEvent, SelectState}, switch::Switch, v_flex
+    ActiveTheme as _, IndexPath, Sizable, WindowExt, button::{Button, ButtonCustomVariant, ButtonVariants, DropdownButton}, h_flex, input::SelectAll, list::{List, ListState}, menu::PopupMenuItem, notification::{Notification, NotificationType}, select::{Select, SelectEvent, SelectState}, switch::Switch, v_flex
 };
 use parking_lot::Mutex;
 use rustc_hash::FxHashSet;
@@ -15,6 +15,7 @@ use ustr::Ustr;
 use crate::{component::{content_list::ContentListDelegate, named_dropdown::{NamedDropdown, NamedDropdownItem}}, entity::{DataEntities, instance::{ContentStates, InstanceEntry}}, icon::PandoraIcon, interface_config::{InstanceContentSortKey, InterfaceConfig, PreferredAddContentSource}, root, ui::PageType};
 
 pub struct InstanceContentSubpage {
+    data: DataEntities,
     content_type: ContentType,
     instance: InstanceID,
     instance_loader: Loader,
@@ -227,6 +228,7 @@ impl InstanceContentSubpage {
         }).detach();
 
         Self {
+            data: data.clone(),
             content_type,
             instance: instance_id,
             instance_loader,
@@ -261,7 +263,7 @@ impl InstanceContentSubpage {
                 })
             }).collect(),
         };
-        crate::root::start_install(content_install, &self.backend_handle, window, cx);
+        crate::root::start_install(content_install, self.instance_name.clone(), None, false, &self.data, window, cx);
     }
 }
 
@@ -294,6 +296,15 @@ impl Render for InstanceContentSubpage {
         self.content_states.observe(self.content_type.content_folder());
 
         let self_entity = cx.entity();
+        let custom_cyan = ButtonCustomVariant::new(cx)
+            .color(rgb(0x04242e).into())
+            .foreground(rgb(0x00f0ff).into())
+            .hover(rgb(0x063e4d).into())
+            .active(rgb(0x031c24).into());
+
+        let content_count = self.content.read(cx).as_ref().map(|c| c.len()).unwrap_or(0);
+        let title_text = format!("Installed {} ({})", self.content_type.title(), content_count);
+
         let header = h_flex()
             .justify_between()
             .items_center()
@@ -303,7 +314,7 @@ impl Render for InstanceContentSubpage {
                 h_flex()
                     .gap_2()
                     .items_center()
-                    .child(div().text_lg().font_weight(FontWeight::BOLD).child(self.content_type.title()))
+                    .child(div().text_lg().font_weight(FontWeight::BOLD).child(title_text))
                     .child(Button::new("update_check").icon(PandoraIcon::RefreshCcw).label("Refresh").ghost().compact().small().on_click({
                         let backend_handle = self.backend_handle.clone();
                         let instance_id = self.instance;
@@ -318,7 +329,9 @@ impl Render for InstanceContentSubpage {
                                 ContentType::ResourcePacks => t::instance::content::update_all_resourcepacks(self.update_count),
                                 ContentType::Shaders => t::instance::content::update_all_shaders(self.update_count),
                             })
-                            .success()
+                            .custom(custom_cyan)
+                            .border_1()
+                            .border_color(rgb(0x00e5ff))
                             .icon(PandoraIcon::Download)
                             .compact()
                             .small()
@@ -327,7 +340,7 @@ impl Render for InstanceContentSubpage {
                                     if let Some(content) = page.content.read(cx).clone() {
                                         for summary in content.iter() {
                                             if summary.update.can_update(page.instance_loader, page.instance_version.as_str()) {
-                                                crate::root::update_single_mod(page.instance, summary.id, summary.filename_hash, &page.updating, &page.backend_handle, window, cx);
+                                                crate::root::update_single_mod(page.instance, summary.id, summary.filename_hash, &page.updating, summary.content_summary.name.clone().unwrap_or_else(|| "".into()).into(), &page.data, window, cx);
                                             }
                                         }
                                         page.content_list.update(cx, |_, cx| cx.notify());
@@ -337,7 +350,10 @@ impl Render for InstanceContentSubpage {
                     })
             )
             .child(DropdownButton::new("addcontent")
-                .success()
+                .custom(custom_cyan)
+                .rounded_none()
+                .border_1()
+                .border_color(rgb(0x00e5ff))
                 .small()
                 .button(
                     Button::new("addcontent_btn")
@@ -408,7 +424,7 @@ impl Render for InstanceContentSubpage {
                 }))
                 .size_full()
                 .border_1()
-                .rounded(theme.radius)
+                .rounded_none()
                 .border_color(theme.border)
                 .child(List::new(&self.content_list).search_placeholder(t::common::search()))
                 .child(filter_bar_controls)

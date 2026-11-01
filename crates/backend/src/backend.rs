@@ -873,6 +873,11 @@ impl BackendState {
             return;
         };
 
+        let has_modpack = mods.iter().any(|m| matches!(m.content_summary.extra, ContentType::ModrinthModpack { .. } | ContentType::CurseforgeModpack { .. }));
+        if !has_modpack {
+            return;
+        }
+
         let mut known_files: FxHashSet<Arc<Path>> = FxHashSet::with_capacity_and_hasher(mods.len() * 2, FxBuildHasher);
         for content in mods.iter() {
             known_files.insert(content.path.clone());
@@ -1303,6 +1308,15 @@ impl BackendState {
         }
 
         if !content_install_files.is_empty() {
+            let total_modpack_bytes: usize = content_install_files.iter().map(|f| match &f.download {
+                ContentDownload::Url { size, .. } => *size,
+                _ => 0,
+            }).sum();
+
+            modal_action.clear_trackers();
+            let overall_tracker = modal_action.push_tracker("Downloading modpack files".into());
+            overall_tracker.set_total(total_modpack_bytes);
+
             let content_install = ContentInstall {
                 target: bridge::install::InstallTarget::Library,
                 loader,
@@ -1310,12 +1324,41 @@ impl BackendState {
                 files: content_install_files.into(),
             };
 
+            let child_modal = ModalAction::default();
+            let child_modal_clone = child_modal.clone();
+            let overall_tracker_clone = overall_tracker.clone();
+
+            let cancel_token = modal_action.request_cancel.clone();
+            let child_cancel = child_modal.request_cancel.clone();
+            tokio::task::spawn(async move {
+                cancel_token.cancelled().await;
+                child_cancel.cancel();
+            });
+
+            let progress_forwarder = tokio::task::spawn(async move {
+                let notify = child_modal_clone.get_notify();
+                loop {
+                    notify.notified().await;
+                    if child_modal_clone.get_finished_at().is_some() {
+                        break;
+                    }
+                    let mut downloaded = 0;
+                    child_modal_clone.write_trackers(|trackers| {
+                        for tr in trackers {
+                            let (c, _) = tr.get();
+                            downloaded += c;
+                        }
+                    });
+                    overall_tracker_clone.set_count(downloaded);
+                }
+            });
+
             if !manual_downloads.is_empty() {
-                // Unstall content & show manual downloads
+                // Install content & show manual downloads
                 let tracker = modal_action.push_tracker("Waiting for manual downloads".into());
                 tracker.add_total(1);
                 _ = futures::join! {
-                    self.install_content(content_install, modal_action.clone()),
+                    self.install_content(content_install, child_modal.clone()),
                     async move {
                         self.create_manual_curseforge_download_session(manual_downloads.clone()).await;
                         tracker.add_count(1);
@@ -1324,8 +1367,17 @@ impl BackendState {
                 };
             } else {
                 // Install content
-                self.install_content(content_install, modal_action.clone()).await;
+                self.install_content(content_install, child_modal.clone()).await;
             }
+
+            if let Some(err) = child_modal.get_error_message() {
+                modal_action.set_finished_with_error(err);
+            }
+
+            child_modal.set_finished();
+            _ = progress_forwarder.await;
+            overall_tracker.set_count(total_modpack_bytes);
+            overall_tracker.set_finished(ProgressTrackerFinishType::Normal);
             true
         } else if !manual_downloads.is_empty() {
             // Show manual downloads
@@ -1380,21 +1432,52 @@ impl BackendState {
         _ = std::fs::create_dir_all(&instance_dir);
 
         let mut instance_info = InstanceConfiguration::new(version.into(), loader);
+        // Apply global RAM allocation default to every new instance and modpack installed:
+        if let Some(global_mem) = self.config.lock().get().memory.clone() {
+            instance_info.memory = Some(global_mem);
+        } else {
+            let default_ram = crate::launch::get_smart_memory_limit_mb();
+            instance_info.memory = Some(schema::instance::InstanceMemoryConfiguration {
+                enabled: true,
+                min: 1024,
+                max: default_ram,
+            });
+        }
 
         match icon {
             Some(EmbeddedOrRaw::Embedded(e)) => {
                 instance_info.instance_fallback_icon = Some(e.into());
             },
             Some(EmbeddedOrRaw::Raw(image_bytes)) => {
-                if let Ok(format) = image::guess_format(&*image_bytes) {
+                let png_bytes = if let Ok(format) = image::guess_format(&*image_bytes) {
                     if format == ImageFormat::Png {
-                        let icon_path = instance_dir.join("icon.png");
-                        crate::fs::write_safe(&icon_path, &*image_bytes).unwrap();
+                        Some(image_bytes.to_vec())
+                    } else if let Ok(img) = image::load_from_memory(&*image_bytes) {
+                        let mut buf = Vec::new();
+                        if img.write_to(&mut std::io::Cursor::new(&mut buf), ImageFormat::Png).is_ok() {
+                            Some(buf)
+                        } else {
+                            None
+                        }
                     } else {
-                        self.send.send_error("Unable to apply icon: only pngs are supported");
+                        None
+                    }
+                } else if let Ok(img) = image::load_from_memory(&*image_bytes) {
+                    let mut buf = Vec::new();
+                    if img.write_to(&mut std::io::Cursor::new(&mut buf), ImageFormat::Png).is_ok() {
+                        Some(buf)
+                    } else {
+                        None
                     }
                 } else {
-                    self.send.send_error("Unable to apply icon: unknown format");
+                    None
+                };
+
+                if let Some(png) = png_bytes {
+                    let icon_path = instance_dir.join("icon.png");
+                    let _ = crate::fs::write_safe(&icon_path, &png);
+                } else {
+                    log::warn!("Unable to apply icon: unknown or unsupported image format");
                 }
             },
             None => {},
