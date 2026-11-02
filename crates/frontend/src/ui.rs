@@ -41,6 +41,7 @@ pub struct LauncherUI {
     pub page: LauncherPage,
     pub update: Option<UpdatePrompt>,
     pub is_account_flyout_open: bool,
+    pub account_flyout_closed_at: Option<std::time::Instant>,
     sidebar_reorderable_state: Entity<ReorderableState>,
     page_history_backwards: VecDeque<(PageType, Arc<[PageType]>)>,
     page_history_forwards: Vec<(PageType, Arc<[PageType]>)>,
@@ -250,6 +251,7 @@ impl LauncherUI {
             page,
             update: None,
             is_account_flyout_open: false,
+            account_flyout_closed_at: None,
             sidebar_reorderable_state,
             page_history_backwards: VecDeque::with_capacity(32),
             page_history_forwards: Vec::new(),
@@ -652,7 +654,7 @@ impl LauncherUI {
                         .text_color(rgb(0x38f8ff))
                 })
                 .child(div().size(px(14.0)).text_color(rgb(0x00f0ff)).child(PandoraIcon::Plus))
-                .child("+ Add Account")
+                .child("Add Account")
                 .on_click(cx.listener(move |this, _, window, cx| {
                     this.is_account_flyout_open = false;
                     crate::modals::accounts::open_add_account_dialog(&backend_handle, window, cx);
@@ -767,10 +769,11 @@ impl LauncherUI {
 
         let flyout_panel = v_flex()
             .id("account-flyout-panel")
+            .occlude()
             .w_full()
             .p_1p5()
             .gap_1p5()
-            .bg(rgb(0x081014))
+            .bg(rgb(0x040e0e))
             .border_1()
             .border_color(rgb(0x00e5ff))
             .rounded_none()
@@ -779,8 +782,12 @@ impl LauncherUI {
                 window.prevent_default();
                 cx.stop_propagation();
             })
+            .on_click(|_, _, cx| {
+                cx.stop_propagation();
+            })
             .on_mouse_down_out(cx.listener(|this, _, _, cx| {
                 this.is_account_flyout_open = false;
+                this.account_flyout_closed_at = Some(std::time::Instant::now());
                 cx.notify();
             }))
             .child(add_btn)
@@ -796,8 +803,10 @@ impl LauncherUI {
             });
 
         let mut flyout_container = div()
+            .id("account-flyout-container")
+            .occlude()
             .absolute()
-            .bottom(px(46.0));
+            .bottom(px(56.0));
 
         if iconized_sidebar {
             flyout_container = flyout_container.left(px(8.0)).w(px(220.0));
@@ -1258,6 +1267,11 @@ impl Render for LauncherUI {
                         })
                 )
                 .on_click(cx.listener(|this, _, _, cx| {
+                    if let Some(closed_at) = this.account_flyout_closed_at.take() {
+                        if closed_at.elapsed().as_millis() < 300 {
+                            return;
+                        }
+                    }
                     this.is_account_flyout_open = !this.is_account_flyout_open;
                     cx.notify();
                 }))
@@ -1285,6 +1299,11 @@ impl Render for LauncherUI {
                     Tooltip::new(account_name.clone()).build(window, cx)
                 })
                 .on_click(cx.listener(|this, _, _, cx| {
+                    if let Some(closed_at) = this.account_flyout_closed_at.take() {
+                        if closed_at.elapsed().as_millis() < 300 {
+                            return;
+                        }
+                    }
                     this.is_account_flyout_open = !this.is_account_flyout_open;
                     cx.notify();
                 }))
@@ -1476,12 +1495,12 @@ impl Render for LauncherUI {
             .max_w_full()
             .w_full()
             .relative()
-            .when(self.is_account_flyout_open, |this| {
-                this.child(self.render_account_flyout(iconized_sidebar, window, cx))
-            })
             .child(settings_button)
             .child(wardrobe_button)
-            .child(account_button);
+            .child(account_button)
+            .when(self.is_account_flyout_open, |this| {
+                this.child(self.render_account_flyout(iconized_sidebar, window, cx))
+            });
         let sidebar = v_flex()
             .w(px(sidebar_width))
             .min_w(px(sidebar_width))
