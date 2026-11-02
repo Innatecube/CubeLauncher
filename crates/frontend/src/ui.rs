@@ -621,7 +621,7 @@ impl LauncherUI {
             .into_any_element()
     }
 
-    fn render_account_flyout(&self, iconized_sidebar: bool, _window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    fn render_account_flyout(&self, _iconized_sidebar: bool, _window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let accounts_entity = self.data.accounts.read(cx);
         let accounts = accounts_entity.accounts.clone();
         let selected_uuid = accounts_entity.selected_account_uuid;
@@ -747,27 +747,24 @@ impl LauncherUI {
                         .border_1()
                         .border_color(rgb(0x00e5ff).opacity(0.4))
                         .text_color(rgb(0x00f0ff))
+                        .flex_none()
                         .child(badge_text)
                 )
                 .child(
-                    div()
-                        .absolute()
-                        .right(px(6.0))
-                        .child(
-                            Button::new(("del-account", idx))
-                                .invisible()
-                                .group_hover(row_group.clone(), |style| style.visible())
-                                .ghost()
-                                .compact()
-                                .icon(PandoraIcon::Trash2)
-                                .h(px(22.0))
-                                .w(px(22.0))
-                                .danger()
-                                .on_click(move |_, _, cx| {
-                                    cx.stop_propagation();
-                                    bh_del.send(MessageToBackend::DeleteAccount { uuid: account_uuid });
-                                })
-                        )
+                    Button::new(("del-account", idx))
+                        .invisible()
+                        .group_hover(row_group.clone(), |style| style.visible())
+                        .ghost()
+                        .compact()
+                        .icon(PandoraIcon::Trash2)
+                        .h(px(22.0))
+                        .w(px(22.0))
+                        .flex_none()
+                        .danger()
+                        .on_click(move |_, _, cx| {
+                            cx.stop_propagation();
+                            bh_del.send(MessageToBackend::DeleteAccount { uuid: account_uuid });
+                        })
                 );
 
             account_items.push(row.into_any_element());
@@ -808,17 +805,13 @@ impl LauncherUI {
                 )
             });
 
-        let mut flyout_container = div()
+        let flyout_container = div()
             .id("account-flyout-container")
             .occlude()
             .absolute()
-            .bottom(px(56.0));
-
-        if iconized_sidebar {
-            flyout_container = flyout_container.left(px(8.0)).w(px(220.0));
-        } else {
-            flyout_container = flyout_container.left(px(8.0)).right(px(8.0));
-        }
+            .bottom(px(56.0))
+            .left(px(8.0))
+            .w(px(270.0));
 
         flyout_container.child(flyout_panel).into_any_element()
     }
