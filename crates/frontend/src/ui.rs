@@ -809,7 +809,7 @@ impl LauncherUI {
             .id("account-flyout-container")
             .occlude()
             .absolute()
-            .bottom(px(56.0))
+            .bottom(px(58.0))
             .left(px(8.0))
             .w(px(270.0));
 
@@ -1501,13 +1501,9 @@ impl Render for LauncherUI {
             .min_w_full()
             .max_w_full()
             .w_full()
-            .relative()
             .child(settings_button)
             .child(wardrobe_button)
-            .child(account_button)
-            .when(self.is_account_flyout_open, |this| {
-                this.child(self.render_account_flyout(iconized_sidebar, window, cx))
-            });
+            .child(account_button);
         let sidebar = v_flex()
             .w(px(sidebar_width))
             .min_w(px(sidebar_width))
@@ -1524,7 +1520,7 @@ impl Render for LauncherUI {
         let current_page = InterfaceConfig::get(cx).main_page.clone();
         let page_anim_id = format!("main_page_{:?}", current_page);
 
-        h_flex()
+        let main_view = h_flex()
             .size_full()
             .child(sidebar)
             .child(
@@ -1542,7 +1538,15 @@ impl Render for LauncherUI {
                         },
                     )
                     .child(self.page.clone().render(&self, window, cx))
-            )
+            );
+
+        div()
+            .size_full()
+            .relative()
+            .child(main_view)
+            .when(self.is_account_flyout_open, |this| {
+                this.child(self.render_account_flyout(iconized_sidebar, window, cx))
+            })
     }
 }
 
