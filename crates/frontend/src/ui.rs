@@ -15,7 +15,6 @@ use crate::{
         main_title_bar::MainTitleBar,
         page_path::PagePath,
         reorderable::{Reorderable, ReorderableDragInfo, ReorderableState},
-        shrinking_text::ShrinkingText,
     },
     entity::{
         DataEntities,
@@ -690,6 +689,7 @@ impl LauncherUI {
             let row = h_flex()
                 .id(("flyout-account", idx))
                 .group(row_group.clone())
+                .relative()
                 .w_full()
                 .h(px(38.0))
                 .px_2()
@@ -734,7 +734,8 @@ impl LauncherUI {
                         .font_family(crate::interface_config::DEFAULT_FONT)
                         .text_size(px(12.0))
                         .text_color(if is_selected { rgb(0x00f0ff) } else { rgb(0xffffff) })
-                        .child(ShrinkingText::new(account_name))
+                        .truncate()
+                        .child(account_name)
                 )
                 .child(
                     div()
@@ -749,19 +750,24 @@ impl LauncherUI {
                         .child(badge_text)
                 )
                 .child(
-                    Button::new(("del-account", idx))
-                        .invisible()
-                        .group_hover(row_group.clone(), |style| style.visible())
-                        .ghost()
-                        .compact()
-                        .icon(PandoraIcon::Trash2)
-                        .h(px(22.0))
-                        .w(px(22.0))
-                        .danger()
-                        .on_click(move |_, _, cx| {
-                            cx.stop_propagation();
-                            bh_del.send(MessageToBackend::DeleteAccount { uuid: account_uuid });
-                        })
+                    div()
+                        .absolute()
+                        .right(px(6.0))
+                        .child(
+                            Button::new(("del-account", idx))
+                                .invisible()
+                                .group_hover(row_group.clone(), |style| style.visible())
+                                .ghost()
+                                .compact()
+                                .icon(PandoraIcon::Trash2)
+                                .h(px(22.0))
+                                .w(px(22.0))
+                                .danger()
+                                .on_click(move |_, _, cx| {
+                                    cx.stop_propagation();
+                                    bh_del.send(MessageToBackend::DeleteAccount { uuid: account_uuid });
+                                })
+                        )
                 );
 
             account_items.push(row.into_any_element());
@@ -1250,7 +1256,15 @@ impl Render for LauncherUI {
                         .min_w_0()
                         .gap_2()
                         .items_center()
-                        .child(ShrinkingText::new(account_name))
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .font_family(crate::interface_config::DEFAULT_FONT)
+                                .text_size(px(12.0))
+                                .truncate()
+                                .child(account_name)
+                        )
                         .when_some(account_badge, |this, badge| {
                             this.child(
                                 div()
