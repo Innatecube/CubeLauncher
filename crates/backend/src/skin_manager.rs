@@ -165,7 +165,7 @@ impl SkinManager {
         let account_info = backend.account_info.clone();
         let http_client = backend.http_client_provider.redirecting();
 
-        tokio::task::spawn(async move {
+        let fut = async move {
             log::info!("Downloading skin from {}", skin_url);
             let Ok(response) = http_client.get(&*skin_url).send().await else {
                 log::warn!("Http error while requesting skin from {}", skin_url);
@@ -242,7 +242,17 @@ impl SkinManager {
                     }
                 }
             });
-        });
+        };
+
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(fut);
+        } else {
+            std::thread::spawn(move || {
+                if let Ok(rt) = tokio::runtime::Builder::new_current_thread().enable_all().build() {
+                    rt.block_on(fut);
+                }
+            });
+        }
     }
 
     pub fn skin_library_mark_dirty(backend: &Arc<BackendState>, changes: FolderChanges) {

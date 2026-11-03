@@ -576,7 +576,7 @@ impl ContentListDelegate {
                         modal_action: modal_action.clone()
                     });
 
-                    crate::modals::generic::show_modal(window, cx, t::instance::content::downloading_children().into(),
+                    crate::modals::generic::watch_action_errors(window, cx,
                         t::instance::content::error_downloading_children().into(), modal_action);
                 }
             }));

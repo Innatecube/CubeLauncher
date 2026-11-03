@@ -195,20 +195,19 @@ pub fn start(runtime: tokio::runtime::Runtime, launcher_dir: PathBuf, send: Fron
     runtime.block_on(async {
         state.send.send(state.account_info.write().get().create_update_message());
         state.load_all_instances().await;
-    });
 
-    {
-        let mut account_info = state.account_info.write();
-        let accounts: Vec<(Uuid, Arc<str>)> = account_info.get().accounts.iter()
-            .filter(|(_, a)| a.is_elyby && a.head.is_none())
-            .map(|(u, a)| (*u, a.username.clone()))
-            .collect();
-        drop(account_info);
+        let accounts: Vec<(Uuid, Arc<str>)> = {
+            let mut account_info = state.account_info.write();
+            account_info.get().accounts.iter()
+                .filter(|(_, a)| a.is_elyby && a.head.is_none())
+                .map(|(u, a)| (*u, a.username.clone()))
+                .collect()
+        };
         for (uuid, username) in accounts {
             let skin_url: Arc<str> = format!("http://skinsystem.ely.by/skins/{}.png", username).into();
             crate::skin_manager::SkinManager::update_account(&state, uuid, skin_url);
         }
-    }
+    });
 
     runtime.spawn(state.start(recv, watcher_rx));
 

@@ -322,8 +322,8 @@ pub fn start_update_check(
         modal_action: modal_action.clone(),
     });
 
-    let title: SharedString = t::instance::content::update::check::title().into();
-    modals::generic::show_modal(window, cx, title, t::instance::content::update::check::error().into(), modal_action);
+    let title: SharedString = t::instance::content::update::check::error().into();
+    modals::generic::watch_action_errors(window, cx, title, modal_action);
 }
 
 pub fn update_single_mod(
