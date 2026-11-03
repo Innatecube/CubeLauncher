@@ -19,6 +19,8 @@ pub struct AccountCredentials {
     pub xsts: Option<XstsToken>,
     #[serde(default, skip_serializing_if = "skip_if_none")]
     pub access_token: Option<TokenWithExpiry>,
+    #[serde(default, skip_serializing_if = "skip_if_none")]
+    pub gamertag: Option<Arc<str>>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]

@@ -5,7 +5,7 @@ use bridge::{
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme as _, Disableable, StyledExt as _, WindowExt, button::{Button, ButtonCustomVariant, ButtonGroup, ButtonVariants}, h_flex, tab::{Tab, TabBar}, v_flex
+    ActiveTheme as _, Disableable, StyledExt as _, WindowExt, button::{Button, ButtonCustomVariant, ButtonGroup, ButtonVariants}, h_flex, spinner::Spinner, tab::{Tab, TabBar}, v_flex
 };
 use serde::{Deserialize, Serialize};
 
@@ -143,9 +143,9 @@ impl Render for InstancePage {
                 .custom(custom_play)
                 .border_1()
                 .border_color(rgb(0x00e5ff))
-                .icon(PandoraIcon::Loader)
+                .icon(Spinner::new())
                 .label(label)
-                .disabled(true)
+                .loading(true)
                 .into_any_element()
         } else {
             match status {
@@ -163,13 +163,19 @@ impl Render for InstancePage {
                         ).into_any_element()
                 },
             InstanceStatus::Launching => {
-                Button::new("launching").warning().icon(PandoraIcon::Loader).label(t::instance::start::starting()).into_any_element()
+                Button::new("launching")
+                    .warning()
+                    .icon(Spinner::new())
+                    .label(t::instance::start::starting())
+                    .loading(true)
+                    .into_any_element()
             },
             InstanceStatus::Stopping => {
                 Button::new("stopping")
                     .danger()
-                    .icon(PandoraIcon::Loader)
+                    .icon(Spinner::new())
                     .label(t::instance::start::stopping())
+                    .loading(true)
                     .on_click({
                         let backend_handle = data.backend_handle.clone();
                         move |_, _, _| {

@@ -7,7 +7,7 @@ use bridge::{
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme, Disableable, IndexPath, Sizable, button::{Button, ButtonVariants}, h_flex, list::{ListDelegate, ListItem, ListState}, spinner::Spinner, switch::Switch, v_flex
+    ActiveTheme, Disableable, IndexPath, Selectable, Sizable, button::{Button, ButtonVariants}, h_flex, list::{ListDelegate, ListItem, ListState}, spinner::Spinner, switch::Switch, v_flex
 };
 use parking_lot::Mutex;
 use rustc_hash::FxHashSet;
@@ -80,6 +80,7 @@ pub struct ContentListDelegate {
     expanded: Arc<AtomicUsize>,
     confirming_delete: Arc<Mutex<FxHashSet<u64>>>,
     updating: Arc<Mutex<FxHashSet<u64>>>,
+    downloading_children: Arc<Mutex<FxHashSet<InstanceContentID>>>,
     last_query: SharedString,
     selected: FxHashSet<u64>,
     selected_range: FxHashSet<u64>,
@@ -111,6 +112,7 @@ impl ContentListDelegate {
             expanded: Arc::new(AtomicUsize::new(0)),
             confirming_delete: Default::default(),
             updating,
+            downloading_children: Default::default(),
             last_query: SharedString::new_static(""),
             selected: FxHashSet::default(),
             selected_range: FxHashSet::default(),
@@ -408,7 +410,12 @@ impl ContentListDelegate {
             .child(right_content)
             .when(selected, |content| content.border_color(cx.theme().info).bg(cx.theme().info.opacity(0.18)));
 
-        ListItem::new(("item", element_id)).p_1().child(item_content).on_click(cx.listener(move |this, click: &ClickEvent, _, cx| {
+        ListItem::new(("item", element_id))
+            .unstyled()
+            .selected(selected)
+            .p_1()
+            .child(item_content)
+            .on_click(cx.listener(move |this, click: &ClickEvent, _, cx| {
             cx.stop_propagation();
             if click.standard_click() {
                 let delegate = this.delegate_mut();
@@ -563,12 +570,30 @@ impl ContentListDelegate {
         if child.disabled_third_party_downloads {
             right_content = right_content.child(ErrorAlert::new(t::instance::content::blocked().into(), t::instance::content::install::no_third_party_downloads().into()).w(Length::Auto));
         } else if child.is_missing {
-            right_content = right_content.child(Button::new("download").label(t::instance::content::download()).success().on_click({
+            let is_downloading = self.downloading_children.lock().contains(&child.parent);
+            if is_downloading {
+                right_content = right_content.child(
+                    Button::new("download")
+                        .label("Downloading...")
+                        .icon(Spinner::new())
+                        .loading(true)
+                        .success()
+                );
+            } else {
+                let downloading_children = self.downloading_children.clone();
                 let backend_handle = self.backend_handle.clone();
                 let id = self.id;
                 let content_id = child.parent;
-                move |_, window, cx| {
+                right_content = right_content.child(Button::new("download").label(t::instance::content::download()).success().on_click(move |_, window, cx| {
                     let modal_action = ModalAction::default();
+
+                    downloading_children.lock().insert(content_id);
+                    modal_action.add_finish_effect({
+                        let downloading_children = downloading_children.clone();
+                        move || {
+                            downloading_children.lock().remove(&content_id);
+                        }
+                    });
 
                     backend_handle.send(MessageToBackend::DownloadContentChildren {
                         id,
@@ -578,8 +603,8 @@ impl ContentListDelegate {
 
                     crate::modals::generic::watch_action_errors(window, cx,
                         t::instance::content::error_downloading_children().into(), modal_action);
-                }
-            }));
+                }));
+            }
         }
 
         right_content = right_content.child(toggle_control);
@@ -594,7 +619,7 @@ impl ContentListDelegate {
             .child(left_content)
             .child(right_content);
 
-        ListItem::new(("item", element_id)).p_1().child(item_content)
+        ListItem::new(("item", element_id)).unstyled().p_1().child(item_content)
     }
 
     pub fn set_content(&mut self, new_content: &[InstanceContentSummary]) {

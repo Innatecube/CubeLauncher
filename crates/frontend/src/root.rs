@@ -314,7 +314,7 @@ pub fn start_update_check(
     backend_handle: &BackendHandle,
     window: &mut Window,
     cx: &mut App,
-) {
+) -> ModalAction {
     let modal_action = ModalAction::default();
 
     backend_handle.send(MessageToBackend::UpdateCheck {
@@ -323,7 +323,9 @@ pub fn start_update_check(
     });
 
     let title: SharedString = t::instance::content::update::check::error().into();
-    modals::generic::watch_action_errors(window, cx, title, modal_action);
+    modals::generic::watch_action_errors(window, cx, title, modal_action.clone());
+
+    modal_action
 }
 
 pub fn update_single_mod(

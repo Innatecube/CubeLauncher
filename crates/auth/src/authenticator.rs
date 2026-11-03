@@ -38,6 +38,7 @@ type OAuthClient = oauth2::Client<
 pub struct Authenticator {
     oauth2_client: OnceCell<OAuthClient>,
     client: reqwest::Client,
+    pub gamertag: Option<Arc<str>>,
 }
 
 // #[derive(thiserror::Error, Debug)]
@@ -128,6 +129,7 @@ impl Authenticator {
         Self {
             client,
             oauth2_client: OnceCell::new(),
+            gamertag: None,
         }
     }
 
@@ -290,13 +292,15 @@ impl Authenticator {
             serde_json::from_slice(&bytes).map_err(|_| XboxAuthenticateError::SerializationError)?;
 
         let skew = Utc::now() - response.issue_instant;
+        let first_xui = response.display_claims.xui.first();
+        if let Some(gtg) = first_xui.and_then(|x| x.get("gtg")) {
+            self.gamertag = Some(Arc::from(gtg.as_str()));
+        }
+
         Ok(XstsToken {
             token: response.token,
             expiry: response.not_after + skew,
-            userhash: response
-                .display_claims
-                .xui
-                .first()
+            userhash: first_xui
                 .ok_or(XboxAuthenticateError::MissingXui)?
                 .get("uhs")
                 .ok_or(XboxAuthenticateError::MissingUhs)?
@@ -334,7 +338,7 @@ impl Authenticator {
     pub async fn get_minecraft_profile(
         &mut self,
         access_token: &MinecraftAccessToken,
-    ) -> Result<MinecraftProfileResponse, XboxAuthenticateError> {
+    ) -> Result<Option<MinecraftProfileResponse>, XboxAuthenticateError> {
         let response = self
             .client
             .get(constants::MINECRAFT_PROFILE_URL)
@@ -342,12 +346,18 @@ impl Authenticator {
             .send()
             .await?;
 
+        if response.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+
         if response.status() != reqwest::StatusCode::OK {
             return Err(XboxAuthenticateError::NonOkHttpStatus(response.status()));
         }
 
         let bytes = response.bytes().await?;
 
-        serde_json::from_slice(&bytes).map_err(|_| XboxAuthenticateError::SerializationError)
+        serde_json::from_slice(&bytes)
+            .map(Some)
+            .map_err(|_| XboxAuthenticateError::SerializationError)
     }
 }

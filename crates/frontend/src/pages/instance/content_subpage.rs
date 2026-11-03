@@ -5,7 +5,7 @@ use bridge::{
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme as _, IndexPath, Sizable, WindowExt, button::{Button, ButtonCustomVariant, ButtonVariants, DropdownButton}, h_flex, input::SelectAll, list::{List, ListState}, menu::PopupMenuItem, notification::{Notification, NotificationType}, select::{Select, SelectEvent, SelectState}, switch::Switch, v_flex
+    ActiveTheme as _, IndexPath, Sizable, WindowExt, button::{Button, ButtonCustomVariant, ButtonVariants, DropdownButton}, h_flex, input::SelectAll, list::{List, ListState}, menu::PopupMenuItem, notification::{Notification, NotificationType}, select::{Select, SelectEvent, SelectState}, spinner::Spinner, switch::Switch, v_flex
 };
 use parking_lot::Mutex;
 use rustc_hash::FxHashSet;
@@ -30,6 +30,7 @@ pub struct InstanceContentSubpage {
 
     needs_update_check: bool,
     update_count: usize,
+    is_checking_updates: bool,
 
     _add_from_file_task: Option<Task<()>>,
 }
@@ -242,6 +243,7 @@ impl InstanceContentSubpage {
             sort_dropdown,
             needs_update_check,
             update_count,
+            is_checking_updates: false,
             _add_from_file_task: None,
         }
     }
@@ -315,13 +317,39 @@ impl Render for InstanceContentSubpage {
                     .gap_2()
                     .items_center()
                     .child(div().text_lg().font_weight(FontWeight::BOLD).child(title_text))
-                    .child(Button::new("update_check").icon(PandoraIcon::RefreshCcw).label("Refresh").ghost().compact().small().on_click({
-                        let backend_handle = self.backend_handle.clone();
-                        let instance_id = self.instance;
-                        move |_, window, cx| {
-                            crate::root::start_update_check(instance_id, &backend_handle, window, cx);
-                        }
-                    }))
+                    .child(if self.is_checking_updates {
+                        Button::new("update_check")
+                            .icon(Spinner::new())
+                            .label("Checking...")
+                            .ghost()
+                            .compact()
+                            .small()
+                            .loading(true)
+                    } else {
+                        Button::new("update_check")
+                            .icon(PandoraIcon::RefreshCcw)
+                            .label("Refresh")
+                            .ghost()
+                            .compact()
+                            .small()
+                            .on_click({
+                                let backend_handle = self.backend_handle.clone();
+                                let instance_id = self.instance;
+                                cx.listener(move |this, _, window, cx| {
+                                    this.is_checking_updates = true;
+                                    let action = crate::root::start_update_check(instance_id, &backend_handle, window, cx);
+                                    let notify = action.get_notify();
+                                    cx.spawn(async move |this, cx| {
+                                        notify.notified().await;
+                                        _ = this.update(cx, |this, cx| {
+                                            this.is_checking_updates = false;
+                                            cx.notify();
+                                        });
+                                    }).detach();
+                                    cx.notify();
+                                })
+                            })
+                    })
                     .when(!self.needs_update_check && self.update_count > 0, |this| {
                         this.child(Button::new("update_all")
                             .label(match self.content_type {

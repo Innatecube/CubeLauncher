@@ -30,6 +30,7 @@ pub struct ListItem {
     selected: bool,
     secondary_selected: bool,
     confirmed: bool,
+    unstyled: bool,
     check_icon: Option<Icon>,
     on_click: Option<Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>>,
     on_mouse_down:
@@ -50,6 +51,7 @@ impl ListItem {
             selected: false,
             secondary_selected: false,
             confirmed: false,
+            unstyled: false,
             on_click: None,
             on_mouse_down: HashMap::new(),
             on_mouse_enter: None,
@@ -62,6 +64,12 @@ impl ListItem {
     /// Set this list item to as a separator, it not able to be selected.
     pub fn separator(mut self) -> Self {
         self.mode = ListItemMode::Separator;
+        self
+    }
+
+    /// Set this list item to be unstyled, disabling default padding and hover styles.
+    pub fn unstyled(mut self) -> Self {
+        self.unstyled = true;
         self
     }
 
@@ -174,6 +182,32 @@ impl StatefulInteractiveElement for ListItem {}
 
 impl RenderOnce for ListItem {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let is_selectable = !(self.disabled || self.mode.is_separator());
+
+        if self.unstyled {
+            return self.base
+                .relative()
+                .w_full()
+                .items_center()
+                .refine_style(&self.style)
+                .when(is_selectable, |this| {
+                    this.when_some(self.on_click, |this, on_click| this.on_click(on_click))
+                        .when_some(self.on_mouse_enter, |this, on_mouse_enter| {
+                            this.on_mouse_move(move |ev, window, cx| (on_mouse_enter)(ev, window, cx))
+                        })
+                        .map(|this| {
+                            self.on_mouse_down
+                                .into_iter()
+                                .fold(this, |this, (button, handler)| {
+                                    this.on_mouse_down(button, move |ev, window, cx| {
+                                        handler(ev, window, cx)
+                                    })
+                                })
+                        })
+                })
+                .child(div().w_full().children(self.children));
+        }
+
         let is_active = self.confirmed || self.selected || self.secondary_selected;
 
         let corner_radii = self.style.corner_radii.clone();

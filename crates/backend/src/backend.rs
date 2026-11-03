@@ -739,6 +739,9 @@ impl BackendState {
 
                     match authenticator.obtain_xsts(&xbl).await {
                         Ok(xsts) => {
+                            if let Some(gtg) = &authenticator.gamertag {
+                                credentials.gamertag = Some(gtg.clone());
+                            }
                             credentials.xsts = Some(xsts);
                         },
                         Err(error) => {
@@ -774,7 +777,28 @@ impl BackendState {
                     log::debug!("Auth Flow: AccessToken");
 
                     match authenticator.get_minecraft_profile(&access_token).await {
-                        Ok(profile) => {
+                        Ok(Some(profile)) => {
+                            if let Some(login_tracker) = login_tracker {
+                                login_tracker.set_count(AUTH_STAGE_COUNT as usize + 1);
+                            }
+
+                            return Ok((profile, access_token));
+                        },
+                        Ok(None) => {
+                            log::info!("Minecraft Java profile not found on Mojang servers, falling back to Xbox Gamertag");
+                            let gamertag = authenticator.gamertag.clone()
+                                .or_else(|| credentials.gamertag.clone())
+                                .unwrap_or_else(|| "MicrosoftUser".into());
+                            let uuid = uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_DNS, format!("Xbox:{}", gamertag).as_bytes());
+                            let profile = schema::minecraft_profile::MinecraftProfileResponse {
+                                id: uuid,
+                                name: gamertag,
+                                skins: vec![],
+                                capes: vec![],
+                            };
+
+                            self.send.send_warning("Minecraft Java profile not found on Mojang. Account added with your Xbox Gamertag.");
+
                             if let Some(login_tracker) = login_tracker {
                                 login_tracker.set_count(AUTH_STAGE_COUNT as usize + 1);
                             }

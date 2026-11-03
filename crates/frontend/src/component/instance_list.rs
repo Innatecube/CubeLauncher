@@ -3,7 +3,7 @@ use std::sync::Arc;
 use bridge::{instance::InstanceStatus, message::MessageToBackend};
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme, Disableable, Sizable, StyledExt, button::{Button, ButtonCustomVariant, ButtonVariants}, h_flex, menu::{DropdownMenu, PopupMenuItem}, separator::Separator, table::{Column, ColumnSort, TableDelegate, TableState}, v_flex
+    ActiveTheme, Disableable, Sizable, StyledExt, button::{Button, ButtonCustomVariant, ButtonVariants}, h_flex, menu::{DropdownMenu, PopupMenuItem}, separator::Separator, spinner::Spinner, table::{Column, ColumnSort, TableDelegate, TableState}, v_flex
 };
 use indexmap::IndexMap;
 
@@ -504,9 +504,9 @@ fn render_play_button(item: &InstanceEntry, index: usize, data: DataEntities, cx
     if data.tasks.read(cx).is_active(id) {
         return Button::new(("installing", index))
             .custom(custom_play)
-            .icon(PandoraIcon::Loader)
+            .icon(Spinner::new())
             .label("Installing...")
-            .disabled(true);
+            .loading(true);
     }
 
     match item.status {
@@ -527,14 +527,16 @@ fn render_play_button(item: &InstanceEntry, index: usize, data: DataEntities, cx
         InstanceStatus::Launching => {
             Button::new(("launching", index))
                 .warning()
-                .icon(PandoraIcon::Loader)
+                .icon(Spinner::new())
                 .label(t::instance::start::starting())
+                .loading(true)
         },
         InstanceStatus::Stopping => {
             Button::new(("stopping", index))
                 .danger()
-                .icon(PandoraIcon::Loader)
+                .icon(Spinner::new())
                 .label(t::instance::start::stopping())
+                .loading(true)
         },
         InstanceStatus::Running => {
             Button::new(("kill_instance", index))
