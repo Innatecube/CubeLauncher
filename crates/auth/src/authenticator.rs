@@ -38,7 +38,6 @@ type OAuthClient = oauth2::Client<
 pub struct Authenticator {
     oauth2_client: OnceCell<OAuthClient>,
     client: reqwest::Client,
-    pub gamertag: Option<Arc<str>>,
 }
 
 // #[derive(thiserror::Error, Debug)]
@@ -129,7 +128,6 @@ impl Authenticator {
         Self {
             client,
             oauth2_client: OnceCell::new(),
-            gamertag: None,
         }
     }
 
@@ -293,9 +291,6 @@ impl Authenticator {
 
         let skew = Utc::now() - response.issue_instant;
         let first_xui = response.display_claims.xui.first();
-        if let Some(gtg) = first_xui.and_then(|x| x.get("gtg")) {
-            self.gamertag = Some(Arc::from(gtg.as_str()));
-        }
 
         Ok(XstsToken {
             token: response.token,

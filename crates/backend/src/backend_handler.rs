@@ -2496,7 +2496,11 @@ impl BackendState {
                 }
 
                 login_tracker.set_finished(ProgressTrackerFinishType::Error);
-                modal_action.set_finished_with_error(format!("Error logging in: {}", &err).into());
+                let error_msg: Arc<str> = match err {
+                    crate::backend::LoginError::NotOwned => "This Microsoft account does not own Minecraft: Java Edition.".into(),
+                    _ => format!("Error logging in: {}", &err).into(),
+                };
+                modal_action.set_finished_with_error(error_msg);
                 return None;
             },
         };
