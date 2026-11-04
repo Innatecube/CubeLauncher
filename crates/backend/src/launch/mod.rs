@@ -138,6 +138,32 @@ impl Launcher {
         Err(std::io::Error::new(std::io::ErrorKind::Other, "Failed to download authlib-injector"))
     }
 
+    pub async fn ensure_custom_skin_loader(http_client: &reqwest::Client, target_path: &Path) -> std::io::Result<()> {
+        if target_path.exists() {
+            if let Ok(metadata) = std::fs::metadata(target_path) {
+                if metadata.len() > 100_000 {
+                    return Ok(());
+                }
+            }
+        }
+
+        log::info!("Downloading CustomSkinLoader for offline/Ely.by skin support...");
+        let url = "https://cdn.modrinth.com/data/idMHQ4n2/versions/yyYvYfZI/CustomSkinLoader_Universal-15.1.jar";
+        if let Ok(res) = http_client.get(url).send().await {
+            if let Ok(bytes) = res.bytes().await {
+                if bytes.len() > 100_000 {
+                    if let Some(parent) = target_path.parent() {
+                        let _ = std::fs::create_dir_all(parent);
+                    }
+                    let _ = std::fs::write(target_path, bytes);
+                    return Ok(());
+                }
+            }
+        }
+
+        Err(std::io::Error::new(std::io::ErrorKind::Other, "Failed to download CustomSkinLoader"))
+    }
+
     pub async fn launch(
         &self,
         http_client: &reqwest::Client,
@@ -154,6 +180,29 @@ impl Launcher {
         if login_info.is_elyby {
             let injector_path = self.directories.libraries_dir.join("authlib-injector.jar");
             let _ = Self::ensure_authlib_injector(http_client, &injector_path).await;
+        }
+
+        if (login_info.is_elyby || login_info.custom_skin.is_some()) && instance_info.loader != Loader::Vanilla {
+            let csl_library_path = self.directories.libraries_dir.join("CustomSkinLoader_Universal-15.1.jar");
+            let _ = Self::ensure_custom_skin_loader(http_client, &csl_library_path).await;
+            if csl_library_path.exists() {
+                let mods_dir = dot_minecraft_path.join("mods");
+                let _ = std::fs::create_dir_all(&mods_dir);
+                let mut already_installed = false;
+                if let Ok(entries) = std::fs::read_dir(&mods_dir) {
+                    for entry in entries.flatten() {
+                        let name = entry.file_name().to_string_lossy().to_string();
+                        if name.contains("CustomSkinLoader") {
+                            already_installed = true;
+                            break;
+                        }
+                    }
+                }
+                if !already_installed {
+                    let dest = mods_dir.join("CustomSkinLoader_Universal-15.1.jar");
+                    let _ = std::fs::copy(&csl_library_path, &dest);
+                }
+            }
         }
 
         launch_tracker.set_total(6);

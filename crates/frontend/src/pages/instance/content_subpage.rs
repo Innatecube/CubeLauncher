@@ -364,14 +364,23 @@ impl Render for InstanceContentSubpage {
                             .compact()
                             .small()
                             .on_click({
-                                cx.listener(move |page, _, window, cx| {
+                                cx.listener(move |page, _, _, cx| {
                                     if let Some(content) = page.content.read(cx).clone() {
+                                        let mut hashes = Vec::new();
                                         for summary in content.iter() {
                                             if summary.update.can_update(page.instance_loader, page.instance_version.as_str()) {
-                                                crate::root::update_single_mod(page.instance, summary.id, summary.filename_hash, &page.updating, summary.content_summary.name.clone().unwrap_or_else(|| "".into()).into(), &page.data, window, cx);
+                                                hashes.push(summary.filename_hash);
                                             }
                                         }
-                                        page.content_list.update(cx, |_, cx| cx.notify());
+                                        if !hashes.is_empty() {
+                                            let folder = match page.content_type {
+                                                ContentType::Mods => bridge::instance::ContentFolder::Mods,
+                                                ContentType::ResourcePacks => bridge::instance::ContentFolder::ResourcePacks,
+                                                ContentType::Shaders => bridge::instance::ContentFolder::Shaders,
+                                            };
+                                            crate::root::update_all_content(page.instance, folder, hashes, &page.updating, &page.data, cx);
+                                            page.content_list.update(cx, |_, cx| cx.notify());
+                                        }
                                     }
                                 })
                             }))

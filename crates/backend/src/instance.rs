@@ -69,7 +69,7 @@ pub struct ContentFolderState {
     dirty_paths: FolderChanges,
     generation: usize,
     pending_load: Option<KeepAliveNotifySignalHandle>,
-    summaries: Option<Arc<[InstanceContentSummary]>>,
+    pub summaries: Option<Arc<[InstanceContentSummary]>>,
 }
 
 impl ContentFolderState {

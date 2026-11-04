@@ -219,6 +219,12 @@ pub enum MessageToBackend {
     UpdateContent {
         instance: InstanceID,
         content_id: InstanceContentID,
+        filename_hash: Option<u64>,
+        modal_action: ModalAction,
+    },
+    UpdateAllContent {
+        instance: InstanceID,
+        content_folder: ContentFolder,
         modal_action: ModalAction,
     },
     UnzipModpack {

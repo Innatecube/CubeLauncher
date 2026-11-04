@@ -845,6 +845,7 @@ impl PrimaryAction {
                         data.backend_handle.send(MessageToBackend::UpdateContent {
                             instance,
                             content_id: *id,
+                            filename_hash: None,
                             modal_action: modal_action.clone()
                         });
                     }

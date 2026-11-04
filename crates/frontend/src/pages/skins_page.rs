@@ -318,6 +318,12 @@ impl Render for SkinsPage {
                                         cx.open_url("https://ely.by/skin-manager");
                                     })
                             )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(rgb(0x758090))
+                                    .child("For Ely.by online servers, set your skin via Manage on Ely.by.")
+                            )
                             .into_any_element();
                     },
                     Some(AccountSkinResult::UnableToLoadSkin) => {

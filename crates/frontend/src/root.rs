@@ -360,7 +360,48 @@ pub fn update_single_mod(
     data.backend_handle.send(MessageToBackend::UpdateContent {
         instance,
         content_id: mod_id,
+        filename_hash: Some(hash),
         modal_action: modal_action.clone(),
+    });
+}
+
+pub fn update_all_content(
+    instance: InstanceID,
+    content_folder: bridge::instance::ContentFolder,
+    hashes: Vec<u64>,
+    updating: &Arc<Mutex<FxHashSet<u64>>>,
+    data: &DataEntities,
+    cx: &mut App,
+) {
+    let modal_action = ModalAction::default();
+
+    for &h in &hashes {
+        updating.lock().insert(h);
+    }
+    modal_action.add_finish_effect({
+        let updating = updating.clone();
+        let hashes = hashes.clone();
+        move || {
+            let mut lock = updating.lock();
+            for h in hashes {
+                lock.remove(&h);
+            }
+        }
+    });
+
+    let (inst_name, inst_icon) = data.instances.read(cx).entries.get(&instance).map(|e| {
+        let entry = e.read(cx);
+        (entry.name.clone(), entry.icon.clone())
+    }).unwrap_or_else(|| ("Updating Content".into(), None));
+
+    data.tasks.update(cx, |tasks, cx| {
+        tasks.add_task(Some(instance), inst_name, inst_icon, modal_action.clone(), false, cx);
+    });
+
+    data.backend_handle.send(MessageToBackend::UpdateAllContent {
+        instance,
+        content_folder,
+        modal_action,
     });
 }
 

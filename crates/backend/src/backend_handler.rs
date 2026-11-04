@@ -840,131 +840,113 @@ impl BackendState {
                 tracker.set_finished(ProgressTrackerFinishType::Normal);
                 modal_action.set_finished();
             },
-            MessageToBackend::UpdateContent { instance: id, content_id: mod_id, modal_action } => {
-                let content_install = if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+            MessageToBackend::UpdateContent { instance: id, content_id: mod_id, filename_hash, modal_action } => {
+                let (content_install, err_msg) = if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
                     let configuration = instance.configuration.get();
                     let (loader, minecraft_version) = (configuration.loader, configuration.minecraft_version);
-                    let Some((mod_summary, _)) = instance.try_get_content(mod_id) else {
-                        self.send.send_error("Can't update mod in instance, unknown mod id");
-                        modal_action.set_finished();
-                        return;
-                    };
-
-                    let Some(update_info) = self.mod_metadata_manager.updates.read().get(&ContentUpdateKey {
-                        hash: mod_summary.content_summary.hash,
-                        loader: loader,
-                        version: minecraft_version
-                    }).cloned() else {
-                        self.send.send_error("Can't update mod in instance, missing update action");
-                        modal_action.set_finished();
-                        return;
-                    };
-
-                    match update_info {
-                        ContentUpdateAction::ErrorNotFound => {
-                            self.send.send_error("Can't update mod in instance, 404 not found");
-                            modal_action.set_finished();
-                            return;
-                        },
-                        ContentUpdateAction::ErrorInvalidHash => {
-                            self.send.send_error("Can't update mod in instance, returned invalid hash");
-                            modal_action.set_finished();
-                            return;
-                        },
-                        ContentUpdateAction::AlreadyUpToDate => {
-                            self.send.send_error("Can't update mod in instance, already up-to-date");
-                            modal_action.set_finished();
-                            return;
-                        },
-                        ContentUpdateAction::ManualInstall => {
-                            self.send.send_error("Can't update mod in instance, mod was manually installed");
-                            modal_action.set_finished();
-                            return;
-                        },
-                        ContentUpdateAction::Modrinth { file, project_id } => {
-                            let mut path = mod_summary.path.with_file_name(&*file.filename);
-                            if !mod_summary.enabled {
-                                path.add_extension("disabled");
+                    let mod_summary = instance.try_get_content(mod_id).map(|(s, _)| s)
+                        .or_else(|| {
+                            if let Some(hash) = filename_hash {
+                                for (_, state) in &instance.content_state {
+                                    if let Some(summaries) = &state.summaries {
+                                        if let Some(found) = summaries.iter().find(|s| s.filename_hash == hash) {
+                                            return Some(found);
+                                        }
+                                    }
+                                }
                             }
+                            None
+                        });
 
-                            let mut hash = [0u8; 20];
-                            let Ok(_) = hex::decode_to_slice(&*file.hashes.sha1, &mut hash) else {
-                                log::warn!("File {} has invalid sha1: {}", file.filename, file.hashes.sha1);
-                                return;
-                            };
+                    if let Some(mod_summary) = mod_summary {
+                        let update_info = self.mod_metadata_manager.updates.read().get(&ContentUpdateKey {
+                            hash: mod_summary.content_summary.hash,
+                            loader,
+                            version: minecraft_version,
+                        }).cloned();
 
-                            debug_assert!(path.is_absolute());
-                            ContentInstall {
-                                target: InstallTarget::Instance(id),
-                                loader,
-                                minecraft_version,
-                                files: [ContentInstallFile {
-                                    replace_old: Some(mod_summary.path.clone()),
-                                    path: bridge::install::ContentInstallPath::Raw(path.into()),
-                                    download: ContentDownload::Url {
-                                        url: file.url.clone(),
-                                        sha1: hash,
-                                        size: file.size,
-                                    },
-                                    content_source: ContentSource::ModrinthProject { project_id },
-                                    reason: ContentInstallReason::Update,
-                                }].into(),
-                            }
-                        },
-                        ContentUpdateAction::Curseforge { file, project_id } => {
-                            let mut path = mod_summary.path.with_file_name(&*file.file_name);
-                            if !mod_summary.enabled {
-                                path.add_extension("disabled");
-                            }
-                            debug_assert!(path.is_absolute());
-
-                            let sha1 = file.hashes.iter()
-                                .find(|hash| hash.algo == 1).map(|hash| &hash.value);
-                            let Some(sha1) = sha1 else {
-                                self.send.send_error("Can't update mod in instance, missing sha1 hash");
-                                modal_action.set_finished();
-                                return;
-                            };
-
-                            let mut hash = [0u8; 20];
-                            let Ok(_) = hex::decode_to_slice(&**sha1, &mut hash) else {
-                                log::warn!("File {} has invalid sha1: {}", file.file_name, sha1);
-                                return;
-                            };
-
-                            let Some(url) = file.download_url.clone() else {
-                                self.send.send_error("Can't update mod in instance, author has blocked third party downloads");
-                                modal_action.set_finished();
-                                return;
-                            };
-
-                            ContentInstall {
-                                target: InstallTarget::Instance(id),
-                                loader,
-                                minecraft_version,
-                                files: [ContentInstallFile {
-                                    replace_old: Some(mod_summary.path.clone()),
-                                    path: bridge::install::ContentInstallPath::Raw(path.into()),
-                                    download: ContentDownload::Url {
-                                        url,
-                                        sha1: hash,
-                                        size: file.file_length as usize,
-                                    },
-                                    content_source: ContentSource::CurseforgeProject { project_id },
-                                    reason: ContentInstallReason::Update,
-                                }].into(),
-                            }
-                        },
+                        match update_info {
+                            Some(update_info) => match create_update_install_file(mod_summary, &update_info) {
+                                Ok(Some(file)) => (Some(ContentInstall {
+                                    target: InstallTarget::Instance(id),
+                                    loader,
+                                    minecraft_version,
+                                    files: [file].into(),
+                                }), None),
+                                Ok(None) => (None, None),
+                                Err(err) => (None, Some(err)),
+                            },
+                            None => (None, Some("Can't update mod in instance, missing update action")),
+                        }
+                    } else {
+                        (None, Some("Can't update mod in instance, unknown mod id"))
                     }
                 } else {
-                    self.send.send_error("Can't update mod in instance, unknown instance id");
-                    modal_action.set_finished();
-                    return;
+                    (None, Some("Can't update mod in instance, unknown instance id"))
                 };
 
-                self.install_content(content_install, modal_action.clone()).await;
-                modal_action.set_finished();
-                self.send.send(MessageToFrontend::Refresh);
+                if let Some(err) = err_msg {
+                    self.send.send_error(err);
+                    modal_action.set_finished();
+                    return;
+                }
+
+                if let Some(content_install) = content_install {
+                    self.install_content(content_install, modal_action.clone()).await;
+                    modal_action.set_finished();
+                    self.send.send(MessageToFrontend::Refresh);
+                } else {
+                    modal_action.set_finished();
+                }
+            },
+            MessageToBackend::UpdateAllContent { instance: id, content_folder, modal_action } => {
+                let (content_install, err_msg) = if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+                    let configuration = instance.configuration.get();
+                    let (loader, minecraft_version) = (configuration.loader, configuration.minecraft_version);
+                    let mut files = Vec::new();
+                    let updates_guard = self.mod_metadata_manager.updates.read();
+
+                    if let Some(summaries) = &instance.content_state[content_folder].summaries {
+                        for summary in summaries.iter() {
+                            if let Some(update_info) = updates_guard.get(&ContentUpdateKey {
+                                hash: summary.content_summary.hash,
+                                loader,
+                                version: minecraft_version,
+                            }) {
+                                if let Ok(Some(file)) = create_update_install_file(summary, update_info) {
+                                    files.push(file);
+                                }
+                            }
+                        }
+                    }
+
+                    if files.is_empty() {
+                        (None, None)
+                    } else {
+                        (Some(ContentInstall {
+                            target: InstallTarget::Instance(id),
+                            loader,
+                            minecraft_version,
+                            files: files.into(),
+                        }), None)
+                    }
+                } else {
+                    (None, Some("Can't update content in instance, unknown instance id"))
+                };
+
+                if let Some(err) = err_msg {
+                    self.send.send_error(err);
+                    modal_action.set_finished();
+                    return;
+                }
+
+                if let Some(content_install) = content_install {
+                    self.install_content(content_install, modal_action.clone()).await;
+                    modal_action.set_finished();
+                    self.send.send(MessageToFrontend::Refresh);
+                } else {
+                    modal_action.set_finished();
+                }
             },
             MessageToBackend::UnzipModpack { id, content_id, modal_action } => {
                 let (summary, loader, minecraft_version, dot_minecraft_dir, mods_dir) = if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
@@ -2681,4 +2663,76 @@ async fn send_log_line(line: &[u8], send: &tokio::sync::mpsc::Sender<Arc<str>>, 
         },
     }
     Ok(())
+}
+
+fn create_update_install_file(
+    mod_summary: &bridge::instance::InstanceContentSummary,
+    update_info: &ContentUpdateAction,
+) -> Result<Option<ContentInstallFile>, &'static str> {
+    match update_info {
+        ContentUpdateAction::ErrorNotFound => Err("Can't update mod in instance, 404 not found"),
+        ContentUpdateAction::ErrorInvalidHash => Err("Can't update mod in instance, returned invalid hash"),
+        ContentUpdateAction::AlreadyUpToDate => Err("Can't update mod in instance, already up-to-date"),
+        ContentUpdateAction::ManualInstall => Err("Can't update mod in instance, mod was manually installed"),
+        ContentUpdateAction::Modrinth { file, project_id } => {
+            let mut path = mod_summary.path.with_file_name(&*file.filename);
+            if !mod_summary.enabled {
+                path.add_extension("disabled");
+            }
+
+            let mut hash = [0u8; 20];
+            if hex::decode_to_slice(&*file.hashes.sha1, &mut hash).is_err() {
+                log::warn!("File {} has invalid sha1: {}", file.filename, file.hashes.sha1);
+                return Err("Can't update mod in instance, returned invalid hash");
+            }
+
+            debug_assert!(path.is_absolute());
+            Ok(Some(ContentInstallFile {
+                replace_old: Some(mod_summary.path.clone()),
+                path: bridge::install::ContentInstallPath::Raw(path.into()),
+                download: ContentDownload::Url {
+                    url: file.url.clone(),
+                    sha1: hash,
+                    size: file.size,
+                },
+                content_source: ContentSource::ModrinthProject { project_id: project_id.clone() },
+                reason: ContentInstallReason::Update,
+            }))
+        },
+        ContentUpdateAction::Curseforge { file, project_id } => {
+            let mut path = mod_summary.path.with_file_name(&*file.file_name);
+            if !mod_summary.enabled {
+                path.add_extension("disabled");
+            }
+            debug_assert!(path.is_absolute());
+
+            let sha1 = file.hashes.iter()
+                .find(|hash| hash.algo == 1).map(|hash| &hash.value);
+            let Some(sha1) = sha1 else {
+                return Err("Can't update mod in instance, missing sha1 hash");
+            };
+
+            let mut hash = [0u8; 20];
+            if hex::decode_to_slice(&**sha1, &mut hash).is_err() {
+                log::warn!("File {} has invalid sha1: {}", file.file_name, sha1);
+                return Err("Can't update mod in instance, returned invalid hash");
+            }
+
+            let Some(url) = file.download_url.clone() else {
+                return Err("Can't update mod in instance, author has blocked third party downloads");
+            };
+
+            Ok(Some(ContentInstallFile {
+                replace_old: Some(mod_summary.path.clone()),
+                path: bridge::install::ContentInstallPath::Raw(path.into()),
+                download: ContentDownload::Url {
+                    url,
+                    sha1: hash,
+                    size: file.file_length as usize,
+                },
+                content_source: ContentSource::CurseforgeProject { project_id: *project_id },
+                reason: ContentInstallReason::Update,
+            }))
+        },
+    }
 }
