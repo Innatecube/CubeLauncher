@@ -189,7 +189,19 @@ pub fn render_instance_tile_with_download(
             .flex()
             .items_center()
             .justify_center()
-            .child(tile)
+            .child(
+                div()
+                    .size_full()
+                    .opacity(0.35)
+                    .child(tile)
+            )
+            .child(
+                div()
+                    .absolute()
+                    .size_full()
+                    .bg(rgba(0x000000a0))
+                    .rounded_none()
+            )
             .child(render_squircle_progress_ring(pct, 2.5, radius_px))
             .into_any_element()
     } else {
@@ -215,7 +227,19 @@ pub fn render_sidebar_tile_with_download(
             .flex()
             .items_center()
             .justify_center()
-            .child(tile)
+            .child(
+                div()
+                    .size_full()
+                    .opacity(0.35)
+                    .child(tile)
+            )
+            .child(
+                div()
+                    .absolute()
+                    .size_full()
+                    .bg(rgba(0x000000a0))
+                    .rounded_none()
+            )
             .child(render_squircle_progress_ring(pct, 2.0, 8.0))
             .into_any_element()
     } else {
