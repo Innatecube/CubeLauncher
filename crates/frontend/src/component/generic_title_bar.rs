@@ -96,6 +96,7 @@ impl RenderOnce for TitleBar {
                                     .justify_center()
                                     .content_center()
                                     .rounded_none()
+                                    .cursor_pointer()
                                     .hover(|this| {
                                         let col = if cx.theme().mode.is_dark() {
                                             cx.theme().secondary.lighten(0.1).opacity(0.8)
@@ -103,6 +104,13 @@ impl RenderOnce for TitleBar {
                                             cx.theme().secondary.darken(0.1).opacity(0.8)
                                         };
                                         this.bg(col)
+                                    })
+                                    .active(|this| {
+                                        this.bg(cx.theme().secondary)
+                                    })
+                                    .on_mouse_down(MouseButton::Left, |_, window, cx| {
+                                        window.prevent_default();
+                                        cx.stop_propagation();
                                     })
                                     .child(PandoraIcon::Bug)
                                     .tooltip(move |window, cx| {

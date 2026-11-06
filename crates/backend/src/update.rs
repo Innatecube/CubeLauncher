@@ -22,13 +22,8 @@ pub async fn check_for_updates(http_client: reqwest::Client, send: FrontendHandl
         return;
     };
 
-    let Some(repository_url) = option_env!("GITHUB_REPOSITORY_URL") else {
-        log::warn!("Skipping update check because GITHUB_REPOSITORY_URL isn't set");
-
-        #[cfg(not(debug_assertions))] // Don't show error in non-release builds
-        send.send_warning("Unable to check for updates, missing GITHUB_REPOSITORY_URL");
-        return;
-    };
+    let repository_url = option_env!("GITHUB_REPOSITORY_URL")
+        .unwrap_or("https://github.com/Innatecube/CubeLauncher");
 
     let current_version = schema::forge::VersionFragment::string_to_parts(version);
 

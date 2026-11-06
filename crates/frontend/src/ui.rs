@@ -1564,9 +1564,24 @@ pub fn open_bug_report_url(window: &mut Window, cx: &mut App) {
 "#);
 
     use std::fmt::Write;
-    _ = writeln!(&mut body, "Version: {:?}", option_env!("PANDORA_RELEASE_VERSION"));
-    _ = writeln!(&mut body, "Distributor: {:?}", option_env!("PANDORA_DISTRIBUTION"));
+    let version = option_env!("PANDORA_RELEASE_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
+    let distributor = option_env!("PANDORA_DISTRIBUTION").unwrap_or("CubeLauncher Official");
+
+    _ = writeln!(&mut body, "Version: {}", version);
+    _ = writeln!(&mut body, "Distributor: {}", distributor);
     _ = writeln!(&mut body, "OS: {} ({})", std::env::consts::OS, std::env::consts::ARCH);
+
+    #[cfg(windows)]
+    {
+        let mut version = unsafe { std::mem::zeroed() };
+        let status = unsafe {
+            windows::Wdk::System::SystemServices::RtlGetVersion(&mut version)
+        };
+        if status.is_ok() {
+            let win_ver = if version.dwBuildNumber >= 22000 { "Windows 11" } else { "Windows 10" };
+            _ = writeln!(&mut body, "OS Name: {} (Build {})", win_ver, version.dwBuildNumber);
+        }
+    }
 
     if cfg!(target_os = "linux") {
         if let Ok(os_release) = std::fs::read_to_string("/etc/os-release") {
@@ -1593,14 +1608,23 @@ pub fn open_bug_report_url(window: &mut Window, cx: &mut App) {
         }
     }
 
-    let Some(github) = option_env!("GITHUB_REPOSITORY_URL") else {
-        let mut notification: Notification = (NotificationType::Error, SharedString::from("Unable to report bug, GITHUB_REPOSITORY_URL was not set at compile time")).into();
-        notification = notification.autohide(false);
-        window.push_notification(notification, cx);
-        return;
-    };
+    let github = option_env!("GITHUB_REPOSITORY_URL")
+        .unwrap_or("https://github.com/Innatecube/CubeLauncher");
 
-    cx.open_url(&format!("{}/issues/new?body={}", github, urlencoding::encode(&body)));
+    let issue_url = format!("{}/issues/new?body={}", github, urlencoding::encode(&body));
+
+    log::info!("Opening bug report URL: {}", issue_url);
+
+    if let Err(err) = open::that_detached(&issue_url) {
+        log::warn!("open::that_detached failed ({err}), falling back to cx.open_url");
+        cx.open_url(&issue_url);
+    }
+
+    let notification: Notification = (
+        NotificationType::Info,
+        SharedString::from("Opening bug report page in browser..."),
+    ).into();
+    window.push_notification(notification, cx);
 }
 
 pub struct SidebarDragPreview {
