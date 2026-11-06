@@ -37,7 +37,6 @@
         <ul class="nav-links">
           <li><a href="#features" class="nav-link">Features</a></li>
           <li><a href="#showcase" class="nav-link">Showcase</a></li>
-          <li><a href="#wardrobe" class="nav-link">3D Wardrobe</a></li>
           <li><a href="#comparison" class="nav-link">Benchmark</a></li>
           <li><a href="#faq" class="nav-link">FAQ</a></li>
         </ul>
@@ -118,7 +117,7 @@
         <div class="window-header">
           <div class="window-title">
             <img src="images/logo.png" alt="icon">
-            <span>CubeLauncher - Luxium (Fabric 1.20.1)</span>
+            <span>CubeLauncher - Fabulously Optimized (Fabric 26.3)</span>
           </div>
           <div class="window-controls">
             <span class="window-btn min"></span>
@@ -146,10 +145,6 @@
         <button class="tab-btn active" data-tab="tab-mods">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
           Mod Engine & Updates
-        </button>
-        <button class="tab-btn" data-tab="tab-wardrobe">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="7" r="4"></circle><path d="M5.5 21v-2a6.5 6.5 0 0 1 13 0v2"></path></svg>
-          3D Wardrobe Studio
         </button>
         <button class="tab-btn" data-tab="tab-instances">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
@@ -186,32 +181,7 @@
         </div>
       </div>
 
-      <!-- Tab 2: 3D Wardrobe -->
-      <div class="tab-content" id="tab-wardrobe">
-        <div class="tab-info">
-          <h3>Interactive 3D Wardrobe & Skin Studio</h3>
-          <p>Inspect your character with a real-time, hardware-accelerated 3D skin renderer. Adjust pitch and yaw angles, preview classic or slim geometry, and switch capes on the fly.</p>
-          <ul class="feature-bullets">
-            <li>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
-              <span><strong>Real-Time 3D Projection</strong>: Smooth 60 FPS viewport with dynamic lighting and shadow planes.</span>
-            </li>
-            <li>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
-              <span><strong>Auto-Injected Ely.by & Offline Skins</strong>: Automatic CustomSkinLoader injection guarantees your skin shows on servers.</span>
-            </li>
-            <li>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
-              <span><strong>Multiple Import Sources</strong>: Add from file, copy from player nickname, or load from direct URL.</span>
-            </li>
-          </ul>
-        </div>
-        <div class="tab-preview">
-          <img src="images/wardrobe_client.png" alt="CubeLauncher Wardrobe">
-        </div>
-      </div>
-
-      <!-- Tab 3: Instances -->
+      <!-- Tab 2: Instances -->
       <div class="tab-content" id="tab-instances">
         <div class="tab-info">
           <h3>Isolated Sandbox Instances & Loaders</h3>
@@ -236,7 +206,7 @@
         </div>
       </div>
 
-      <!-- Tab 4: Discover -->
+      <!-- Tab 3: Discover -->
       <div class="tab-content" id="tab-discover">
         <div class="tab-info">
           <h3>Modrinth & CurseForge in One Place</h3>
@@ -321,53 +291,6 @@
           <h3 class="card-title">Crash Log Diagnostics</h3>
           <p class="card-desc">Instant crash detection and 1-click log uploading directly to pastebin services, making troubleshooting broken mods effortless.</p>
           <span class="card-tag">One-Click Upload</span>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Interactive 3D Wardrobe Playground -->
-  <section class="wardrobe-playground" id="wardrobe">
-    <div class="container">
-      <div class="section-header">
-        <span class="section-tag">Interactive Playground</span>
-        <h2 class="section-title">Test the 3D Wardrobe. <span class="highlight">Right in your browser.</span></h2>
-        <p class="section-desc">Drag with your mouse or use the sliders below to rotate the 3D Minecraft skin model in real-time.</p>
-      </div>
-
-      <div class="playground-card">
-        <div class="wardrobe-canvas-container">
-          <span class="canvas-hint">Drag to rotate 3D model</span>
-          <canvas id="skinCanvas"></canvas>
-        </div>
-
-        <div class="wardrobe-controls">
-          <div class="slider-group">
-            <div class="slider-header">
-              <span>YAW ROTATION:</span>
-              <span class="val" id="yawVal">25°</span>
-            </div>
-            <input type="range" min="0" max="360" value="25" class="cyber-slider" id="yawSlider">
-          </div>
-
-          <div class="slider-group">
-            <div class="slider-header">
-              <span>PITCH ANGLE:</span>
-              <span class="val" id="pitchVal">12°</span>
-            </div>
-            <input type="range" min="-45" max="45" value="12" class="cyber-slider" id="pitchSlider">
-          </div>
-
-          <div class="wardrobe-buttons">
-            <button class="btn btn-ghost btn-sm model-btn active" data-model="classic">Classic (4px)</button>
-            <button class="btn btn-ghost btn-sm model-btn" data-model="slim">Slim (3px)</button>
-            <button class="btn btn-ghost btn-sm active" id="toggleAnimBtn">Animation: ON</button>
-            <button class="btn btn-outline btn-sm" id="resetSkinBtn">Reset Camera</button>
-          </div>
-
-          <p style="font-size: 0.88rem; color: var(--text-dim); margin-top: 8px;">
-            Supports Ely.by skin syncing, local PNG imports, cape previews, and custom skin variations directly inside CubeLauncher.
-          </p>
         </div>
       </div>
     </div>
@@ -565,7 +488,6 @@
           <ul>
             <li><a href="#features">Features</a></li>
             <li><a href="#showcase">Showcase</a></li>
-            <li><a href="#wardrobe">3D Wardrobe</a></li>
             <li><a href="#comparison">Benchmark</a></li>
             <li><a href="#download">Downloads</a></li>
           </ul>
@@ -599,7 +521,6 @@
     </div>
   </footer>
 
-  <script src="js/skinview3d.bundle.js"></script>
   <script src="js/main.js"></script>
 </body>
 </html>
