@@ -609,6 +609,13 @@ impl BackendState {
                     return;
                 };
 
+                // Ensure disk is rescanned fresh rather than returning stale cached summaries
+                if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+                    for content_folder in ContentFolder::iter() {
+                        instance.mark_content_dirty(self, content_folder, FolderChanges::all_dirty(), false);
+                    }
+                }
+
                 let mut content = Vec::new();
                 for folder in ContentFolder::iter() {
                     let Some(summaries) = Instance::load_content(self.clone(), id, folder).await else {
@@ -812,22 +819,23 @@ impl BackendState {
 
                 match results {
                     Ok(updates) => {
-                        let mut meta_updates = self.mod_metadata_manager.updates.write();
+                        { // Scope ensures the non-Send RwLockWriteGuard does not cross the await below
+                            let mut meta_updates = self.mod_metadata_manager.updates.write();
 
-                        for update in updates {
-                            meta_updates.insert(ContentUpdateKey {
-                                hash: update.mod_summary.hash,
-                                loader,
-                                version,
-                            }, update.action);
+                            for update in updates {
+                                meta_updates.insert(ContentUpdateKey {
+                                    hash: update.mod_summary.hash,
+                                    loader,
+                                    version,
+                                }, update.action);
+                            }
                         }
 
-                        drop(meta_updates);
-
-                        if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
-                            for content_folder in ContentFolder::iter() {
-                                instance.mark_content_dirty(self, content_folder, FolderChanges::all_dirty(), true);
+                        for content_folder in ContentFolder::iter() {
+                            if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+                                instance.mark_content_dirty(self, content_folder, FolderChanges::all_dirty(), false);
                             }
+                            _ = Instance::load_content(self.clone(), id, content_folder).await;
                         }
                     },
                     Err(error) => {

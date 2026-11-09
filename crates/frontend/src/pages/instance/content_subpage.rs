@@ -317,39 +317,37 @@ impl Render for InstanceContentSubpage {
                     .gap_2()
                     .items_center()
                     .child(div().text_lg().font_weight(FontWeight::BOLD).child(title_text))
-                    .child(if self.is_checking_updates {
-                        Button::new("update_check")
-                            .icon(Spinner::new())
-                            .label("Checking...")
-                            .ghost()
-                            .compact()
-                            .small()
-                            .loading(true)
-                    } else {
+                    .child(
                         Button::new("update_check")
                             .icon(PandoraIcon::RefreshCcw)
-                            .label("Refresh")
+                            .label(if self.is_checking_updates { "Checking..." } else { "Refresh" })
+                            .loading(self.is_checking_updates)
                             .ghost()
                             .compact()
                             .small()
-                            .on_click({
+                            .when(!self.is_checking_updates, |this| {
                                 let backend_handle = self.backend_handle.clone();
                                 let instance_id = self.instance;
-                                cx.listener(move |this, _, window, cx| {
+                                this.on_click(cx.listener(move |this, _, window, cx| {
+                                    if this.is_checking_updates {
+                                        return;
+                                    }
                                     this.is_checking_updates = true;
                                     let action = crate::root::start_update_check(instance_id, &backend_handle, window, cx);
                                     let notify = action.get_notify();
                                     cx.spawn(async move |this, cx| {
-                                        notify.notified().await;
+                                        while action.get_finished_at().is_none() {
+                                            notify.notified().await;
+                                        }
                                         _ = this.update(cx, |this, cx| {
                                             this.is_checking_updates = false;
                                             cx.notify();
                                         });
                                     }).detach();
                                     cx.notify();
-                                })
+                                }))
                             })
-                    })
+                    )
                     .when(!self.needs_update_check && self.update_count > 0, |this| {
                         this.child(Button::new("update_all")
                             .label(match self.content_type {
