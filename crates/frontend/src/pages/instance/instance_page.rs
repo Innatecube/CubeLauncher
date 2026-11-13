@@ -5,7 +5,7 @@ use bridge::{
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme as _, Disableable, StyledExt as _, WindowExt, button::{Button, ButtonCustomVariant, ButtonGroup, ButtonVariants}, h_flex, spinner::Spinner, tab::{Tab, TabBar}, v_flex
+    ActiveTheme as _, Disableable, StyledExt as _, WindowExt, button::{Button, ButtonCustomVariant, ButtonGroup, ButtonVariants, DropdownButton}, h_flex, menu::PopupMenuItem, spinner::Spinner, tab::{Tab, TabBar}, v_flex
 };
 use serde::{Deserialize, Serialize};
 
@@ -163,11 +163,42 @@ impl Render for InstancePage {
                         ).into_any_element()
                 },
             InstanceStatus::Launching => {
-                Button::new("launching")
+                let name = name.clone();
+                let data = data.clone();
+                DropdownButton::new("launching_split")
                     .warning()
-                    .icon(Spinner::new())
-                    .label(t::instance::start::starting())
-                    .loading(true)
+                    .rounded_none()
+                    .button(
+                        Button::new("launching")
+                            .warning()
+                            .icon(Spinner::new())
+                            .label(t::instance::start::starting())
+                            .loading(true)
+                    )
+                    .dropdown_menu({
+                        let data = data.clone();
+                        let name = name.clone();
+                        move |this, _, _| {
+                            let restart_item = PopupMenuItem::new("Restart Instance")
+                                .icon(PandoraIcon::RefreshCcw)
+                                .on_click({
+                                    let data = data.clone();
+                                    let name = name.clone();
+                                    move |_, window, cx| {
+                                        crate::root::restart_instance(id, name.clone(), None, &data, window, cx);
+                                    }
+                                });
+                            let stop_item = PopupMenuItem::new(t::instance::kill_instance())
+                                .icon(PandoraIcon::Close)
+                                .on_click({
+                                    let backend_handle = data.backend_handle.clone();
+                                    move |_, _, _| {
+                                        backend_handle.send(MessageToBackend::KillInstance { id });
+                                    }
+                                });
+                            this.item(restart_item).item(stop_item)
+                        }
+                    })
                     .into_any_element()
             },
             InstanceStatus::Stopping => {
@@ -185,14 +216,45 @@ impl Render for InstancePage {
                     .into_any_element()
             },
             InstanceStatus::Running => {
-                Button::new("kill_instance")
+                let name = name.clone();
+                let data = data.clone();
+                DropdownButton::new("running_split")
                     .danger()
-                    .icon(PandoraIcon::Close)
-                    .label(t::instance::kill_instance())
-                    .on_click({
-                        let backend_handle = data.backend_handle.clone();
-                        move |_, _, _| {
-                            backend_handle.send(MessageToBackend::KillInstance { id });
+                    .rounded_none()
+                    .button(
+                        Button::new("kill_instance")
+                            .danger()
+                            .icon(PandoraIcon::Close)
+                            .label(t::instance::kill_instance())
+                            .on_click({
+                                let backend_handle = data.backend_handle.clone();
+                                move |_, _, _| {
+                                    backend_handle.send(MessageToBackend::KillInstance { id });
+                                }
+                            })
+                    )
+                    .dropdown_menu({
+                        let data = data.clone();
+                        let name = name.clone();
+                        move |this, _, _| {
+                            let stop_item = PopupMenuItem::new(t::instance::kill_instance())
+                                .icon(PandoraIcon::Close)
+                                .on_click({
+                                    let backend_handle = data.backend_handle.clone();
+                                    move |_, _, _| {
+                                        backend_handle.send(MessageToBackend::KillInstance { id });
+                                    }
+                                });
+                            let restart_item = PopupMenuItem::new("Restart Instance")
+                                .icon(PandoraIcon::RefreshCcw)
+                                .on_click({
+                                    let data = data.clone();
+                                    let name = name.clone();
+                                    move |_, window, cx| {
+                                        crate::root::restart_instance(id, name.clone(), None, &data, window, cx);
+                                    }
+                                });
+                            this.item(stop_item).item(restart_item)
                         }
                     })
                     .into_any_element()

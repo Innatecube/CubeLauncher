@@ -292,7 +292,23 @@ impl BackendState {
                     return;
                 };
 
+                let mut was_launching = false;
+                if let Some(modal) = instance.launch_modal.take() {
+                    modal.request_cancel.cancel();
+                    modal.set_finished_with_error("Launch cancelled by user".into());
+                    was_launching = true;
+                }
+                if let Some(keepalive) = instance.launch_keepalive.take() {
+                    drop(keepalive);
+                    was_launching = true;
+                }
+
                 if instance.processes.is_empty() && instance.closing_processes.is_empty() {
+                    if was_launching {
+                        self.restore_mods_folder_if_stopped(instance);
+                        self.send.send(instance.create_modify_message());
+                        return;
+                    }
                     self.send.send_error("Can't kill instance, instance wasn't running");
                     return;
                 }
@@ -2174,6 +2190,7 @@ impl BackendState {
             }
 
             instance.launch_keepalive = Some(keepalive.create_handle());
+            instance.launch_modal = Some(modal_action.clone());
 
             self.send.send(MessageToFrontend::MoveInstanceToTop {
                 id
@@ -2195,6 +2212,7 @@ impl BackendState {
             if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
                 if let Some(launch_keepalive) = &instance.launch_keepalive && !launch_keepalive.is_alive() {
                     instance.launch_keepalive = None;
+                    instance.launch_modal = None;
                 }
                 self.restore_mods_folder_if_stopped(instance);
                 self.send.send(instance.create_modify_message());

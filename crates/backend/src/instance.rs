@@ -7,7 +7,7 @@ use base64::Engine;
 use bridge::{
     instance::{
         ContentFolder, ContentSummary, ContentUpdateContext, ContentUpdateStatus, InstanceContentID, InstanceContentSummary, InstanceID, InstancePlaytime, InstanceServerSummary, InstanceStatus, InstanceWorldSummary
-    }, keep_alive::KeepAliveHandle, message::{BridgeDataLoadState, MessageToFrontend}, notify_signal::{KeepAliveNotifySignal, KeepAliveNotifySignalHandle},
+    }, keep_alive::KeepAliveHandle, message::{BridgeDataLoadState, MessageToFrontend}, modal_action::ModalAction, notify_signal::{KeepAliveNotifySignal, KeepAliveNotifySignalHandle},
 };
 use command::PandoraProcess;
 use futures::FutureExt;
@@ -34,6 +34,7 @@ pub struct Instance {
     pub stats: Persistent<InstanceStats>,
 
     pub launch_keepalive: Option<KeepAliveHandle>,
+    pub launch_modal: Option<ModalAction>,
     pub processes: Vec<PandoraProcess>,
     pub closing_processes: Vec<(PandoraProcess, Instant)>,
     session_started_at: Option<Instant>,
@@ -788,6 +789,7 @@ impl Instance {
             stats,
 
             launch_keepalive: None,
+            launch_modal: None,
             processes: Vec::new(),
             closing_processes: Vec::new(),
             session_started_at: None,

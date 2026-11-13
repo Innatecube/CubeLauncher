@@ -238,6 +238,39 @@ pub fn start_instance(
     }).detach();
 }
 
+pub fn restart_instance(
+    id: InstanceID,
+    name: SharedString,
+    quick_play: Option<QuickPlayLaunch>,
+    data: &DataEntities,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    data.backend_handle.send(MessageToBackend::KillInstance { id });
+
+    let data = data.clone();
+    let window_handle = window.window_handle();
+    cx.spawn(async move |cx| {
+        for _ in 0..30 {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            let is_stopped = cx.update(|cx| {
+                if let Some(entry) = data.instances.read(cx).entries.get(&id) {
+                    entry.read(cx).status == bridge::instance::InstanceStatus::NotRunning
+                } else {
+                    false
+                }
+            });
+
+            if is_stopped {
+                break;
+            }
+        }
+
+        _ = cx.update_window(window_handle, |_, window, cx| {
+            start_instance(id, name, quick_play, &data, window, cx);
+        });
+    }).detach();
+}
 
 pub fn start_install(
     content_install: ContentInstall,

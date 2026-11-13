@@ -3,7 +3,7 @@ use std::sync::Arc;
 use bridge::{instance::InstanceStatus, message::MessageToBackend};
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme, Disableable, Sizable, StyledExt, button::{Button, ButtonCustomVariant, ButtonVariants}, h_flex, menu::{DropdownMenu, PopupMenuItem}, separator::Separator, spinner::Spinner, table::{Column, ColumnSort, TableDelegate, TableState}, v_flex
+    ActiveTheme, Disableable, Sizable, StyledExt, button::{Button, ButtonCustomVariant, ButtonVariants, DropdownButton}, h_flex, menu::{DropdownMenu, PopupMenuItem}, separator::Separator, spinner::Spinner, table::{Column, ColumnSort, TableDelegate, TableState}, v_flex
 };
 use indexmap::IndexMap;
 
@@ -300,7 +300,7 @@ impl InstanceList {
                 .child(format!("Installing... {}%", pct_int))
                 .into_any_element()
         } else {
-            render_play_button(item, index, self.data.clone(), cx).w_full().small().into_any_element()
+            render_play_button(item, index, self.data.clone(), cx)
         };
 
         let menu = Button::new(("menu", index))
@@ -479,7 +479,7 @@ impl TableDelegate for InstanceList {
                     h_flex()
                         .size_full()
                         .border_r_4()
-                        .child(play_button.w_full().small())
+                        .child(play_button)
                         .into_any_element()
                 },
                 "loader" => item.configuration.loader.pretty_name().into_any_element(),
@@ -491,7 +491,7 @@ impl TableDelegate for InstanceList {
     }
 }
 
-fn render_play_button(item: &InstanceEntry, index: usize, data: DataEntities, cx: &App) -> Button {
+fn render_play_button(item: &InstanceEntry, index: usize, data: DataEntities, cx: &App) -> AnyElement {
     let name = item.name.clone();
     let id = item.id;
 
@@ -506,7 +506,10 @@ fn render_play_button(item: &InstanceEntry, index: usize, data: DataEntities, cx
             .custom(custom_play)
             .icon(Spinner::new())
             .label("Installing...")
-            .loading(true);
+            .loading(true)
+            .w_full()
+            .small()
+            .into_any_element();
     }
 
     match item.status {
@@ -517,19 +520,59 @@ fn render_play_button(item: &InstanceEntry, index: usize, data: DataEntities, cx
                 .border_color(rgb(0x00e5ff))
                 .icon(PandoraIcon::Play)
                 .label("Play")
+                .w_full()
+                .small()
                 .on_click(
                 move |_, window, cx| {
                     cx.stop_propagation();
                     root::start_instance(id, name.clone(), None, &data, window, cx);
                 },
             )
+            .into_any_element()
         },
         InstanceStatus::Launching => {
-            Button::new(("launching", index))
+            let name = name.clone();
+            let data = data.clone();
+            DropdownButton::new(("launching_split", index))
                 .warning()
-                .icon(Spinner::new())
-                .label(t::instance::start::starting())
-                .loading(true)
+                .rounded_none()
+                .w_full()
+                .small()
+                .button(
+                    Button::new(("launching", index))
+                        .warning()
+                        .icon(Spinner::new())
+                        .label(t::instance::start::starting())
+                        .loading(true)
+                        .flex_1()
+                )
+                .dropdown_menu({
+                    let data = data.clone();
+                    let name = name.clone();
+                    move |this, _, _| {
+                        let restart_item = PopupMenuItem::new("Restart Instance")
+                            .icon(PandoraIcon::RefreshCcw)
+                            .on_click({
+                                let data = data.clone();
+                                let name = name.clone();
+                                move |_, window, cx| {
+                                    cx.stop_propagation();
+                                    crate::root::restart_instance(id, name.clone(), None, &data, window, cx);
+                                }
+                            });
+                        let stop_item = PopupMenuItem::new(t::instance::kill_instance())
+                            .icon(PandoraIcon::Close)
+                            .on_click({
+                                let backend_handle = data.backend_handle.clone();
+                                move |_, _, cx| {
+                                    cx.stop_propagation();
+                                    backend_handle.send(MessageToBackend::KillInstance { id });
+                                }
+                            });
+                        this.item(restart_item).item(stop_item)
+                    }
+                })
+                .into_any_element()
         },
         InstanceStatus::Stopping => {
             Button::new(("stopping", index))
@@ -537,11 +580,8 @@ fn render_play_button(item: &InstanceEntry, index: usize, data: DataEntities, cx
                 .icon(Spinner::new())
                 .label(t::instance::start::stopping())
                 .loading(true)
-        },
-        InstanceStatus::Running => {
-            Button::new(("kill_instance", index))
-                .danger()
-                .label(t::instance::kill())
+                .w_full()
+                .small()
                 .on_click({
                     let backend_handle = data.backend_handle.clone();
                     move |_, _, cx| {
@@ -549,6 +589,57 @@ fn render_play_button(item: &InstanceEntry, index: usize, data: DataEntities, cx
                         backend_handle.send(MessageToBackend::KillInstance { id });
                     }
                 })
+                .into_any_element()
+        },
+        InstanceStatus::Running => {
+            let name = name.clone();
+            let data = data.clone();
+            DropdownButton::new(("running_split", index))
+                .danger()
+                .rounded_none()
+                .w_full()
+                .small()
+                .button(
+                    Button::new(("kill_instance", index))
+                        .danger()
+                        .icon(PandoraIcon::Close)
+                        .label(t::instance::kill())
+                        .flex_1()
+                        .on_click({
+                            let backend_handle = data.backend_handle.clone();
+                            move |_, _, cx| {
+                                cx.stop_propagation();
+                                backend_handle.send(MessageToBackend::KillInstance { id });
+                            }
+                        })
+                )
+                .dropdown_menu({
+                    let data = data.clone();
+                    let name = name.clone();
+                    move |this, _, _| {
+                        let stop_item = PopupMenuItem::new(t::instance::kill_instance())
+                            .icon(PandoraIcon::Close)
+                            .on_click({
+                                let backend_handle = data.backend_handle.clone();
+                                move |_, _, cx| {
+                                    cx.stop_propagation();
+                                    backend_handle.send(MessageToBackend::KillInstance { id });
+                                }
+                            });
+                        let restart_item = PopupMenuItem::new("Restart Instance")
+                            .icon(PandoraIcon::RefreshCcw)
+                            .on_click({
+                                let data = data.clone();
+                                let name = name.clone();
+                                move |_, window, cx| {
+                                    cx.stop_propagation();
+                                    crate::root::restart_instance(id, name.clone(), None, &data, window, cx);
+                                }
+                            });
+                        this.item(stop_item).item(restart_item)
+                    }
+                })
+                .into_any_element()
         },
     }
 }
