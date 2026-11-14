@@ -51,71 +51,12 @@
     </div>
   </header>
 
-  <!-- Advertisement Sidebar (Google Ads) -->
-  <aside class="ad-sidebar" id="adSidebar" aria-label="Advertisement Sidebar">
-    <div class="ad-sidebar-card">
-      <div class="ad-sidebar-header">
-        <span class="ad-badge">SPONSORED</span>
-        <button type="button" class="ad-toggle-btn" id="adCloseBtn" aria-label="Minimize Ad" title="Minimize Ad">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
-      </div>
+  <!-- Page Layout Container (Main Content + Permanent Non-Closable Ad Sidebar) -->
+  <div class="page-layout-container">
+    <main class="page-main-flow">
 
-      <div class="ad-body">
-        <!-- Google AdSense Unit (Responsive / Vertical Skyscraper) -->
-        <!-- Replace data-ad-client and data-ad-slot with your Google AdSense IDs -->
-        <ins class="adsbygoogle"
-             style="display:block; min-height: 250px;"
-             data-ad-client="ca-pub-XXXXXXXXXXXXXXXX"
-             data-ad-slot="1234567890"
-             data-ad-format="auto"
-             data-full-width-responsive="true"></ins>
-        <script>
-          try {
-            (adsbygoogle = window.adsbygoogle || []).push({});
-          } catch (e) {
-            console.warn("Google AdSense initialization awaiting valid publisher ID");
-          }
-        </script>
-
-        <!-- Placeholder / Fallback Card (shows while waiting for live AdSense ID) -->
-        <div class="ad-fallback" id="adFallback">
-          <div class="ad-fallback-icon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="2" y="3" width="20" height="14" rx="0"></rect>
-              <line x1="8" y1="21" x2="16" y2="21"></line>
-              <line x1="12" y1="17" x2="12" y2="21"></line>
-            </svg>
-          </div>
-          <div class="ad-fallback-title">Google Ads Ready</div>
-          <p class="ad-fallback-desc">
-            Configured for Google AdSense.<br>
-            Insert your <code>ca-pub-ID</code> to begin serving live ads.
-          </p>
-          <div class="ad-fallback-specs">160&times;600 &bull; 300&times;250</div>
-        </div>
-      </div>
-
-      <div class="ad-sidebar-footer">
-        <span class="ad-footer-brand">Ads by Google</span>
-        <a href="https://support.google.com/adsense/answer/1638622" target="_blank" rel="noopener noreferrer" class="ad-info-link" title="About Google Ads">Ad Info</a>
-      </div>
-    </div>
-
-    <!-- Collapsed Tab (shown when sidebar is minimized) -->
-    <button type="button" class="ad-collapsed-pill" id="adExpandBtn" aria-label="Show Advertisement" title="Expand Ad">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
-      </svg>
-      <span>ADS</span>
-    </button>
-  </aside>
-
-  <!-- Hero Section -->
-  <section class="hero">
+      <!-- Hero Section -->
+      <section class="hero">
     <div class="container">
       <div class="hero-pill">
         <span class="dot"></span>
@@ -528,6 +469,60 @@
       </div>
     </div>
   </section>
+
+    </main>
+
+    <!-- Permanent Advertisement Sidebar (Google Ads) -->
+    <aside class="ad-sidebar" id="adSidebar" aria-label="Advertisement Sidebar">
+      <div class="ad-sidebar-sticky">
+        <div class="ad-sidebar-card">
+          <div class="ad-sidebar-header">
+            <span class="ad-badge">SPONSORED</span>
+          </div>
+
+          <div class="ad-body">
+            <!-- Google AdSense Unit (Responsive / Vertical Skyscraper) -->
+            <!-- Replace data-ad-client and data-ad-slot with your Google AdSense IDs -->
+            <ins class="adsbygoogle"
+                 style="display:block; min-height: 250px;"
+                 data-ad-client="ca-pub-XXXXXXXXXXXXXXXX"
+                 data-ad-slot="1234567890"
+                 data-ad-format="auto"
+                 data-full-width-responsive="true"></ins>
+            <script>
+              try {
+                (adsbygoogle = window.adsbygoogle || []).push({});
+              } catch (e) {
+                console.warn("Google AdSense initialization awaiting valid publisher ID");
+              }
+            </script>
+
+            <!-- Placeholder / Fallback Card (shows while waiting for live AdSense ID) -->
+            <div class="ad-fallback" id="adFallback">
+              <div class="ad-fallback-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="2" y="3" width="20" height="14" rx="0"></rect>
+                  <line x1="8" y1="21" x2="16" y2="21"></line>
+                  <line x1="12" y1="17" x2="12" y2="21"></line>
+                </svg>
+              </div>
+              <div class="ad-fallback-title">Google Ads Ready</div>
+              <p class="ad-fallback-desc">
+                Configured for Google AdSense.<br>
+                Insert your <code>ca-pub-ID</code> to begin serving live ads.
+              </p>
+              <div class="ad-fallback-specs">160&times;600 &bull; 300&times;250</div>
+            </div>
+          </div>
+
+          <div class="ad-sidebar-footer">
+            <span class="ad-footer-brand">Ads by Google</span>
+            <a href="https://support.google.com/adsense/answer/1638622" target="_blank" rel="noopener noreferrer" class="ad-info-link" title="About Google Ads">Ad Info</a>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div> <!-- /.page-layout-container -->
 
   <!-- Footer -->
   <footer class="footer">

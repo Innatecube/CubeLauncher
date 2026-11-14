@@ -102,27 +102,60 @@ a {
 }
 
 /* ==========================================================================
-   Advertisement Sidebar (Google Ads)
+   Page Layout (Main Content Flow + Permanent Dedicated Ad Sidebar)
    ========================================================================== */
-.ad-sidebar {
-  position: fixed;
-  right: 20px;
-  top: 96px;
-  z-index: 95;
-  width: 220px;
-  font-family: var(--font-sans);
-  pointer-events: none;
+.page-layout-container {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 32px;
+  max-width: 1560px;
+  margin: 0 auto;
+  padding: 0 24px;
+  width: 100%;
 }
 
-@media (min-width: 1540px) {
-  .ad-sidebar {
-    width: 260px;
-    right: 24px;
-  }
+.page-main-flow {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  max-width: 1240px;
+}
+
+.page-main-flow .container {
+  max-width: 100%;
+  padding: 0;
+}
+
+.navbar .nav-container {
+  max-width: 1560px;
+  padding: 0 24px;
+}
+
+.footer .container {
+  max-width: 1560px;
+  padding: 0 24px;
+}
+
+/* ==========================================================================
+   Permanent Dedicated Ad Sidebar (Non-Closable)
+   ========================================================================== */
+.ad-sidebar {
+  width: 260px;
+  flex-shrink: 0;
+  margin-top: 36px;
+  font-family: var(--font-sans);
+}
+
+.ad-sidebar-sticky {
+  position: sticky;
+  top: 96px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 .ad-sidebar-card {
-  pointer-events: auto;
   background: rgba(8, 12, 20, 0.96);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
@@ -132,18 +165,13 @@ a {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  transition: opacity 0.25s ease, transform 0.25s ease;
-}
-
-.ad-sidebar.collapsed .ad-sidebar-card {
-  display: none;
 }
 
 .ad-sidebar-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
+  justify-content: flex-start;
+  padding: 10px 14px;
   background: rgba(0, 229, 255, 0.04);
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
@@ -155,27 +183,6 @@ a {
   font-weight: 700;
   color: var(--cyan-primary);
   text-transform: uppercase;
-}
-
-.ad-toggle-btn {
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 0;
-  color: var(--text-dim);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  transition: var(--transition-fast);
-}
-
-.ad-toggle-btn:hover {
-  background: rgba(0, 229, 255, 0.15);
-  border-color: var(--cyan-primary);
-  color: var(--cyan-primary);
 }
 
 .ad-body {
@@ -284,62 +291,22 @@ a {
   color: #fff;
 }
 
-/* Collapsed Pill Button */
-.ad-collapsed-pill {
-  pointer-events: auto;
-  display: none;
-  position: fixed;
-  right: 0;
-  top: 180px;
-  background: rgba(8, 12, 20, 0.95);
-  border: 1px solid var(--cyan-border);
-  border-right: none;
-  border-radius: 0;
-  padding: 10px 8px;
-  color: var(--cyan-primary);
-  cursor: pointer;
-  box-shadow: -4px 4px 16px rgba(0, 0, 0, 0.5);
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  font-family: var(--font-mono);
-  font-size: 0.65rem;
-  font-weight: 700;
-  letter-spacing: 1px;
-  transition: var(--transition-fast);
-  z-index: 99;
-}
+/* Responsive adjustments */
+@media (max-width: 1080px) {
+  .page-layout-container {
+    flex-direction: column;
+    padding: 0 16px;
+    gap: 0;
+  }
 
-.ad-collapsed-pill:hover {
-  background: rgba(0, 229, 255, 0.12);
-  color: #fff;
-  border-color: var(--cyan-primary);
-}
-
-.ad-sidebar.collapsed .ad-collapsed-pill {
-  display: flex;
-}
-
-/* Mobile & Tablet adjustments */
-@media (max-width: 1199px) {
   .ad-sidebar {
-    right: 0;
-    top: auto;
-    bottom: 20px;
-    width: auto;
+    width: 100%;
+    max-width: 500px;
+    margin: 40px auto 0 auto;
   }
 
-  .ad-sidebar:not(.collapsed) .ad-sidebar-card {
-    position: fixed;
-    right: 12px;
-    bottom: 12px;
-    width: 240px;
-    z-index: 1000;
-  }
-
-  .ad-collapsed-pill {
-    top: auto;
-    bottom: 80px;
+  .ad-sidebar-sticky {
+    position: static;
   }
 }
 
