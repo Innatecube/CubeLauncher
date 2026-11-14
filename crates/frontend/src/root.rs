@@ -251,9 +251,10 @@ pub fn restart_instance(
     let data = data.clone();
     let window_handle = window.window_handle();
     cx.spawn(async move |cx| {
-        for _ in 0..30 {
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-            let is_stopped = cx.update(|cx| {
+        let mut stopped = false;
+        for _ in 0..100 {
+            cx.background_executor().timer(std::time::Duration::from_millis(100)).await;
+            stopped = cx.update(|cx| {
                 if let Some(entry) = data.instances.read(cx).entries.get(&id) {
                     entry.read(cx).status == bridge::instance::InstanceStatus::NotRunning
                 } else {
@@ -261,14 +262,31 @@ pub fn restart_instance(
                 }
             });
 
-            if is_stopped {
+            if stopped {
                 break;
             }
         }
 
-        _ = cx.update_window(window_handle, |_, window, cx| {
-            start_instance(id, name, quick_play, &data, window, cx);
-        });
+        if !stopped {
+            log::warn!("Restart instance {id:?} timed out waiting for process to stop");
+            return;
+        }
+
+        // Brief delay to allow OS file locks to release
+        cx.background_executor().timer(std::time::Duration::from_millis(200)).await;
+
+        let updated = cx.update_window(window_handle, |_, window, cx| {
+            start_instance(id, name.clone(), quick_play.clone(), &data, window, cx);
+        }).is_ok();
+
+        if !updated {
+            let fallback_window = cx.update(|cx| cx.windows().into_iter().next());
+            if let Some(w) = fallback_window {
+                _ = cx.update_window(w, |_, window, cx| {
+                    start_instance(id, name, quick_play, &data, window, cx);
+                });
+            }
+        }
     }).detach();
 }
 
