@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initFaqAccordion();
   initOsDetection();
   initSmoothScroll();
+  initAdSidebar();
 });
 
 /* ==========================================================================
@@ -108,4 +109,53 @@ function initSmoothScroll() {
       }
     });
   });
+}
+
+/* ==========================================================================
+   6. Advertisement Sidebar Controller
+   ========================================================================== */
+function initAdSidebar() {
+  const adSidebar = document.getElementById('adSidebar');
+  const adCloseBtn = document.getElementById('adCloseBtn');
+  const adExpandBtn = document.getElementById('adExpandBtn');
+  const adFallback = document.getElementById('adFallback');
+
+  if (!adSidebar) return;
+
+  // Determine initial state: user preference or auto-collapse on smaller screens
+  const savedState = localStorage.getItem('cubelauncher_ad_collapsed');
+  const isNarrowScreen = window.innerWidth < 1200;
+
+  if (savedState === 'true' || (savedState === null && isNarrowScreen)) {
+    adSidebar.classList.add('collapsed');
+  }
+
+  // Close / Collapse handler
+  if (adCloseBtn) {
+    adCloseBtn.addEventListener('click', () => {
+      adSidebar.classList.add('collapsed');
+      localStorage.setItem('cubelauncher_ad_collapsed', 'true');
+    });
+  }
+
+  // Expand handler
+  if (adExpandBtn) {
+    adExpandBtn.addEventListener('click', () => {
+      adSidebar.classList.remove('collapsed');
+      localStorage.setItem('cubelauncher_ad_collapsed', 'false');
+    });
+  }
+
+  // Observer to hide placeholder once AdSense renders an ad iframe
+  if (adFallback) {
+    const adIns = adSidebar.querySelector('ins.adsbygoogle');
+    if (adIns) {
+      const observer = new MutationObserver(() => {
+        if (adIns.hasChildNodes() || adIns.getAttribute('data-ad-status') === 'filled') {
+          adFallback.style.display = 'none';
+        }
+      });
+      observer.observe(adIns, { childList: true, attributes: true });
+    }
+  }
 }

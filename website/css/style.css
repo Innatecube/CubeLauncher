@@ -88,37 +88,6 @@ a {
   text-decoration: none;
 }
 
-/* Announcement Top Bar */
-.top-announcement {
-  background: linear-gradient(90deg, rgba(0, 229, 255, 0.12), rgba(0, 180, 216, 0.08), rgba(0, 229, 255, 0.12));
-  border-bottom: 1px solid var(--cyan-border);
-  padding: 8px 16px;
-  text-align: center;
-  font-size: 0.84rem;
-  color: var(--text-main);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-
-.top-announcement .badge {
-  background: var(--cyan-primary);
-  color: #05080c;
-  font-weight: 700;
-  font-size: 0.72rem;
-  padding: 2px 8px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.top-announcement a {
-  color: var(--cyan-primary);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  font-weight: 600;
-}
-
 /* Navbar */
 .navbar {
   position: sticky;
@@ -130,6 +99,248 @@ a {
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   padding: 16px 0;
   transition: var(--transition-fast);
+}
+
+/* ==========================================================================
+   Advertisement Sidebar (Google Ads)
+   ========================================================================== */
+.ad-sidebar {
+  position: fixed;
+  right: 20px;
+  top: 96px;
+  z-index: 95;
+  width: 220px;
+  font-family: var(--font-sans);
+  pointer-events: none;
+}
+
+@media (min-width: 1540px) {
+  .ad-sidebar {
+    width: 260px;
+    right: 24px;
+  }
+}
+
+.ad-sidebar-card {
+  pointer-events: auto;
+  background: rgba(8, 12, 20, 0.96);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(0, 229, 255, 0.22);
+  border-radius: 0;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.65), 0 0 20px rgba(0, 229, 255, 0.07);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.ad-sidebar.collapsed .ad-sidebar-card {
+  display: none;
+}
+
+.ad-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: rgba(0, 229, 255, 0.04);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.ad-badge {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 1.2px;
+  font-weight: 700;
+  color: var(--cyan-primary);
+  text-transform: uppercase;
+}
+
+.ad-toggle-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 0;
+  color: var(--text-dim);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  transition: var(--transition-fast);
+}
+
+.ad-toggle-btn:hover {
+  background: rgba(0, 229, 255, 0.15);
+  border-color: var(--cyan-primary);
+  color: var(--cyan-primary);
+}
+
+.ad-body {
+  position: relative;
+  min-height: 270px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  background: #05080d;
+}
+
+.ad-body ins.adsbygoogle {
+  width: 100%;
+  min-height: 250px;
+  z-index: 2;
+}
+
+/* Fallback card shown when live Google Ads has not populated or during setup */
+.ad-fallback {
+  width: 100%;
+  min-height: 240px;
+  padding: 20px 10px;
+  background: linear-gradient(180deg, rgba(0, 229, 255, 0.04) 0%, rgba(6, 9, 14, 0.8) 100%);
+  border: 1px dashed rgba(0, 229, 255, 0.25);
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.ad-body ins.adsbygoogle[data-ad-status="filled"] + .ad-fallback,
+.ad-body ins.adsbygoogle:not(:empty) + .ad-fallback {
+  display: none !important;
+}
+
+.ad-fallback-icon {
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(0, 229, 255, 0.35);
+  border-radius: 0;
+  background: rgba(0, 229, 255, 0.08);
+  color: var(--cyan-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+
+.ad-fallback-title {
+  font-family: var(--font-display);
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-bottom: 6px;
+  letter-spacing: 0.3px;
+}
+
+.ad-fallback-desc {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  line-height: 1.45;
+  margin: 0 0 10px 0;
+}
+
+.ad-fallback-desc code {
+  font-family: var(--font-mono);
+  color: var(--cyan-primary);
+  background: rgba(0, 229, 255, 0.1);
+  padding: 1px 4px;
+  font-size: 0.7rem;
+}
+
+.ad-fallback-specs {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+}
+
+.ad-sidebar-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: rgba(0, 0, 0, 0.4);
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+  font-size: 0.68rem;
+}
+
+.ad-footer-brand {
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.ad-info-link {
+  color: var(--cyan-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.ad-info-link:hover {
+  color: #fff;
+}
+
+/* Collapsed Pill Button */
+.ad-collapsed-pill {
+  pointer-events: auto;
+  display: none;
+  position: fixed;
+  right: 0;
+  top: 180px;
+  background: rgba(8, 12, 20, 0.95);
+  border: 1px solid var(--cyan-border);
+  border-right: none;
+  border-radius: 0;
+  padding: 10px 8px;
+  color: var(--cyan-primary);
+  cursor: pointer;
+  box-shadow: -4px 4px 16px rgba(0, 0, 0, 0.5);
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  transition: var(--transition-fast);
+  z-index: 99;
+}
+
+.ad-collapsed-pill:hover {
+  background: rgba(0, 229, 255, 0.12);
+  color: #fff;
+  border-color: var(--cyan-primary);
+}
+
+.ad-sidebar.collapsed .ad-collapsed-pill {
+  display: flex;
+}
+
+/* Mobile & Tablet adjustments */
+@media (max-width: 1199px) {
+  .ad-sidebar {
+    right: 0;
+    top: auto;
+    bottom: 20px;
+    width: auto;
+  }
+
+  .ad-sidebar:not(.collapsed) .ad-sidebar-card {
+    position: fixed;
+    right: 12px;
+    bottom: 12px;
+    width: 240px;
+    z-index: 1000;
+  }
+
+  .ad-collapsed-pill {
+    top: auto;
+    bottom: 80px;
+  }
 }
 
 .nav-container {
