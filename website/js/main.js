@@ -137,13 +137,13 @@ function initAdSidebar() {
     }, 8000);
   }
 
-  // Observer to hide picture fallback if AdSense serves a live display image ad
+  // Observer to hide picture fallback ONLY if Google AdSense serves a confirmed live ad
   if (pictureAdUnit && adIns) {
     const observer = new MutationObserver(() => {
-      if (adIns.hasChildNodes() || adIns.getAttribute('data-ad-status') === 'filled') {
+      if (adIns.getAttribute('data-ad-status') === 'filled') {
         pictureAdUnit.style.display = 'none';
       }
     });
-    observer.observe(adIns, { childList: true, attributes: true });
+    observer.observe(adIns, { attributes: true, attributeFilter: ['data-ad-status'] });
   }
 }

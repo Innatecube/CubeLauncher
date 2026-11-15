@@ -213,6 +213,7 @@ a {
   position: relative;
   overflow: hidden;
   border-radius: 0;
+  background: #070c14;
 }
 
 .picture-ad-link {
@@ -235,11 +236,11 @@ a {
   border-radius: 0;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
   transition: opacity 0.4s ease;
+  background: #070c14;
 }
 
-/* Hide fallback image banner once live Google AdSense delivers a filled ad */
-.ad-body ins.adsbygoogle[data-ad-status="filled"] + .picture-ad-unit,
-.ad-body ins.adsbygoogle:not(:empty) + .picture-ad-unit {
+/* Hide fallback image banner only when Google AdSense delivers a confirmed filled ad */
+.ad-body ins.adsbygoogle[data-ad-status="filled"] + .picture-ad-unit {
   display: none !important;
 }
 
