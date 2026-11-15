@@ -1,0 +1,125 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 600" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#070c14"/>
+      <stop offset="40%" stop-color="#0a1220"/>
+      <stop offset="100%" stop-color="#04070c"/>
+    </linearGradient>
+
+    <linearGradient id="cyanGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00f0ff"/>
+      <stop offset="100%" stop-color="#0088cc"/>
+    </linearGradient>
+
+    <linearGradient id="emeraldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10b981"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+
+    <linearGradient id="btnGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00e5ff"/>
+      <stop offset="100%" stop-color="#00a3cc"/>
+    </linearGradient>
+
+    <pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse">
+      <path d="M 30 0 L 0 0 0 30" fill="none" stroke="rgba(0, 229, 255, 0.08)" stroke-width="1"/>
+    </pattern>
+
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="10" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="480" height="600" fill="url(#bgGrad)"/>
+  <rect width="480" height="600" fill="url(#grid)"/>
+
+  <!-- Top Decorative Glow -->
+  <circle cx="240" cy="80" r="160" fill="rgba(0, 229, 255, 0.12)" filter="url(#glow)"/>
+  <circle cx="360" cy="480" r="140" fill="rgba(16, 185, 129, 0.08)" filter="url(#glow)"/>
+
+  <!-- Border & Frame -->
+  <rect x="8" y="8" width="464" height="584" fill="none" stroke="rgba(0, 229, 255, 0.25)" stroke-width="2"/>
+  <rect x="14" y="14" width="452" height="572" fill="none" stroke="rgba(255, 255, 255, 0.04)" stroke-width="1"/>
+
+  <!-- Corner Brackets (Cube Aesthetic) -->
+  <path d="M 14 34 L 14 14 L 34 14" fill="none" stroke="#00e5ff" stroke-width="3"/>
+  <path d="M 446 14 L 466 14 L 466 34" fill="none" stroke="#00e5ff" stroke-width="3"/>
+  <path d="M 14 566 L 14 586 L 34 586" fill="none" stroke="#00e5ff" stroke-width="3"/>
+  <path d="M 446 586 L 466 586 L 466 566" fill="none" stroke="#00e5ff" stroke-width="3"/>
+
+  <!-- Top Sponsored Badge -->
+  <rect x="28" y="28" width="130" height="24" fill="rgba(0, 229, 255, 0.15)" stroke="#00e5ff" stroke-width="1"/>
+  <text x="93" y="44" fill="#00e5ff" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="700" letter-spacing="1.5" text-anchor="middle">SPONSORED</text>
+
+  <rect x="350" y="28" width="102" height="24" fill="rgba(16, 185, 129, 0.15)" stroke="#10b981" stroke-width="1"/>
+  <text x="401" y="44" fill="#10b981" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="700" letter-spacing="1" text-anchor="middle">50% OFF</text>
+
+  <!-- Central Graphic: Isometric Minecraft Server Voxel Cube -->
+  <g transform="translate(240, 190)">
+    <!-- Top Face -->
+    <polygon points="0,-70 80,-25 0,20 -80,-25" fill="#00e5ff" opacity="0.85"/>
+    <polygon points="0,-60 65,-23 0,14 -65,-23" fill="#19f0ff" opacity="0.9"/>
+    
+    <!-- Left Face -->
+    <polygon points="-80,-25 0,20 0,110 -80,65" fill="#085268"/>
+    <!-- Server Rack Slots (Left) -->
+    <line x1="-70" y1="0" x2="-10" y2="35" stroke="#00e5ff" stroke-width="2" opacity="0.8"/>
+    <line x1="-70" y1="25" x2="-10" y2="60" stroke="#00e5ff" stroke-width="2" opacity="0.8"/>
+    <line x1="-70" y1="50" x2="-10" y2="85" stroke="#00e5ff" stroke-width="2" opacity="0.8"/>
+    <circle cx="-60" cy="18" r="3" fill="#10b981"/>
+    <circle cx="-60" cy="43" r="3" fill="#00e5ff"/>
+    <circle cx="-60" cy="68" r="3" fill="#10b981"/>
+
+    <!-- Right Face -->
+    <polygon points="0,20 80,-25 80,65 0,110" fill="#0e7899"/>
+    <!-- Server Rack Slots (Right) -->
+    <line x1="10" y1="35" x2="70" y2="0" stroke="#7cedff" stroke-width="2" opacity="0.8"/>
+    <line x1="10" y1="60" x2="70" y2="25" stroke="#7cedff" stroke-width="2" opacity="0.8"/>
+    <line x1="10" y1="85" x2="70" y2="50" stroke="#7cedff" stroke-width="2" opacity="0.8"/>
+    <circle cx="60" cy="18" r="3" fill="#00e5ff"/>
+    <circle cx="60" cy="43" r="3" fill="#10b981"/>
+    <circle cx="60" cy="68" r="3" fill="#00e5ff"/>
+
+    <!-- Glowing Core Accent -->
+    <circle cx="0" cy="20" r="16" fill="#00f0ff" filter="url(#glow)" opacity="0.9"/>
+  </g>
+
+  <!-- Typography Content -->
+  <text x="240" y="340" fill="#ffffff" font-family="'Space Grotesk', sans-serif" font-size="28" font-weight="800" text-anchor="middle" letter-spacing="-0.5">
+    APEX CLOUD NODE
+  </text>
+  <text x="240" y="372" fill="#00e5ff" font-family="'Space Grotesk', sans-serif" font-size="18" font-weight="700" text-anchor="middle" letter-spacing="0.5">
+    HIGH-PERFORMANCE GAME SERVERS
+  </text>
+
+  <!-- Feature Bullet Points -->
+  <g transform="translate(60, 405)" font-family="'Plus Jakarta Sans', sans-serif" font-size="14" fill="#cbd5e1">
+    <!-- Row 1 -->
+    <circle cx="10" cy="6" r="4" fill="#00e5ff"/>
+    <text x="24" y="11" font-weight="600">AMD Ryzen 9 7950X3D • 5.7GHz</text>
+
+    <!-- Row 2 -->
+    <circle cx="10" cy="34" r="4" fill="#10b981"/>
+    <text x="24" y="39" font-weight="600">DDR5 RAM • NVMe Gen4 Storage</text>
+
+    <!-- Row 3 -->
+    <circle cx="10" cy="62" r="4" fill="#00e5ff"/>
+    <text x="24" y="67" font-weight="600">DDoS Shield • 1-Click Modpacks</text>
+  </g>
+
+  <!-- Call-to-Action Button -->
+  <g transform="translate(48, 510)">
+    <rect width="384" height="52" fill="url(#btnGrad)" rx="0"/>
+    <rect width="384" height="52" fill="none" stroke="#ffffff" stroke-width="1.5" opacity="0.3"/>
+    <text x="192" y="32" fill="#05080c" font-family="'Space Grotesk', sans-serif" font-size="16" font-weight="800" letter-spacing="1" text-anchor="middle">
+      DEPLOY SERVER • 50% OFF &rarr;
+    </text>
+  </g>
+
+  <!-- Bottom Footnote -->
+  <text x="240" y="580" fill="#64748b" font-family="'JetBrains Mono', monospace" font-size="10" text-anchor="middle">
+    USE PROMO CODE: CUBE50 • 24/7 SUPPORT
+  </text>
+</svg>

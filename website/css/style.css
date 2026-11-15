@@ -196,7 +196,7 @@ a {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 12px;
+  padding: 8px;
   background: #05080d;
 }
 
@@ -206,67 +206,48 @@ a {
   z-index: 2;
 }
 
-/* Fallback card shown when live Google Ads has not populated or during setup */
-.ad-fallback {
+/* Picture Ad Unit */
+.picture-ad-unit {
   width: 100%;
-  min-height: 240px;
-  padding: 20px 10px;
-  background: linear-gradient(180deg, rgba(0, 229, 255, 0.04) 0%, rgba(6, 9, 14, 0.8) 100%);
-  border: 1px dashed rgba(0, 229, 255, 0.25);
+  display: block;
+  position: relative;
+  overflow: hidden;
   border-radius: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
 }
 
-.ad-body ins.adsbygoogle[data-ad-status="filled"] + .ad-fallback,
-.ad-body ins.adsbygoogle:not(:empty) + .ad-fallback {
+.picture-ad-link {
+  display: block;
+  width: 100%;
+  text-decoration: none;
+  cursor: pointer;
+  transition: filter var(--transition-fast), transform var(--transition-fast);
+}
+
+.picture-ad-link:hover {
+  filter: brightness(1.08) contrast(1.05);
+}
+
+.picture-ad-img {
+  width: 100%;
+  height: auto;
+  display: block;
+  border: 1px solid rgba(0, 229, 255, 0.25);
+  border-radius: 0;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  transition: opacity 0.4s ease;
+}
+
+/* Hide fallback image banner once live Google AdSense delivers a filled ad */
+.ad-body ins.adsbygoogle[data-ad-status="filled"] + .picture-ad-unit,
+.ad-body ins.adsbygoogle:not(:empty) + .picture-ad-unit {
   display: none !important;
 }
 
-.ad-fallback-icon {
-  width: 42px;
-  height: 42px;
-  border: 1px solid rgba(0, 229, 255, 0.35);
-  border-radius: 0;
-  background: rgba(0, 229, 255, 0.08);
-  color: var(--cyan-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 12px;
-}
-
-.ad-fallback-title {
-  font-family: var(--font-display);
-  font-size: 0.88rem;
-  font-weight: 700;
-  color: var(--text-main);
-  margin-bottom: 6px;
-  letter-spacing: 0.3px;
-}
-
-.ad-fallback-desc {
-  font-size: 0.72rem;
-  color: var(--text-dim);
-  line-height: 1.45;
-  margin: 0 0 10px 0;
-}
-
-.ad-fallback-desc code {
-  font-family: var(--font-mono);
-  color: var(--cyan-primary);
-  background: rgba(0, 229, 255, 0.1);
-  padding: 1px 4px;
-  font-size: 0.7rem;
-}
-
-.ad-fallback-specs {
+.ad-verified-tag {
   font-family: var(--font-mono);
   font-size: 0.65rem;
-  color: var(--text-muted);
+  color: var(--cyan-primary);
+  font-weight: 700;
   letter-spacing: 0.5px;
 }
 

@@ -112,16 +112,36 @@ function initSmoothScroll() {
 }
 
 /* ==========================================================================
-   6. Advertisement Observer (Permanent Non-Closable Sidebar)
+   6. Picture Ad Banner Rotator & AdSense Observer
    ========================================================================== */
 function initAdSidebar() {
-  const adFallback = document.getElementById('adFallback');
+  const pictureAdUnit = document.getElementById('pictureAdUnit');
+  const pictureAdImg = document.getElementById('pictureAdImg');
   const adIns = document.querySelector('.ad-sidebar ins.adsbygoogle');
 
-  if (adFallback && adIns) {
+  // Rotate between high-quality gaming picture ads
+  if (pictureAdImg) {
+    const banners = [
+      'images/ad_banner_gaming.svg',
+      'images/ad_banner_shaders.svg'
+    ];
+    let bannerIndex = 0;
+
+    setInterval(() => {
+      bannerIndex = (bannerIndex + 1) % banners.length;
+      pictureAdImg.style.opacity = '0';
+      setTimeout(() => {
+        pictureAdImg.src = banners[bannerIndex];
+        pictureAdImg.style.opacity = '1';
+      }, 300);
+    }, 8000);
+  }
+
+  // Observer to hide picture fallback if AdSense serves a live display image ad
+  if (pictureAdUnit && adIns) {
     const observer = new MutationObserver(() => {
       if (adIns.hasChildNodes() || adIns.getAttribute('data-ad-status') === 'filled') {
-        adFallback.style.display = 'none';
+        pictureAdUnit.style.display = 'none';
       }
     });
     observer.observe(adIns, { childList: true, attributes: true });
