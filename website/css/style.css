@@ -44,6 +44,7 @@
 html {
   scroll-behavior: smooth;
   color-scheme: dark;
+  overflow-x: clip;
 }
 
 body {
@@ -51,7 +52,7 @@ body {
   background-color: var(--bg-darkest);
   color: var(--text-main);
   line-height: 1.6;
-  overflow-x: hidden;
+  overflow-x: clip;
   -webkit-font-smoothing: antialiased;
   background-image: 
     radial-gradient(circle at 50% 0%, rgba(0, 229, 255, 0.09) 0%, transparent 60%),
@@ -107,7 +108,7 @@ a {
 .page-layout-container {
   display: flex;
   justify-content: center;
-  align-items: flex-start;
+  align-items: stretch;
   gap: 32px;
   max-width: 1560px;
   margin: 0 auto;
@@ -138,21 +139,24 @@ a {
 }
 
 /* ==========================================================================
-   Permanent Dedicated Ad Sidebar (Non-Closable)
+   Permanent Dedicated Ad Sidebar (Non-Closable, Tracks Scroll Up & Down)
    ========================================================================== */
 .ad-sidebar {
   width: 260px;
   flex-shrink: 0;
   margin-top: 36px;
   font-family: var(--font-sans);
+  align-self: stretch;
 }
 
 .ad-sidebar-sticky {
+  position: -webkit-sticky;
   position: sticky;
   top: 96px;
   display: flex;
   flex-direction: column;
   gap: 16px;
+  z-index: 50;
 }
 
 .ad-sidebar-card {
