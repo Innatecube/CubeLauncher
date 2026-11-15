@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 270" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgSrv" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#070c14"/>
+      <stop offset="50%" stop-color="#0b1626"/>
+      <stop offset="100%" stop-color="#040810"/>
+    </linearGradient>
+    <linearGradient id="cyanGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00f0ff"/>
+      <stop offset="100%" stop-color="#0088cc"/>
+    </linearGradient>
+    <linearGradient id="btnSrv" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00e5ff"/>
+      <stop offset="100%" stop-color="#0099cc"/>
+    </linearGradient>
+    <pattern id="gridSrv" width="24" height="24" patternUnits="userSpaceOnUse">
+      <path d="M 24 0 L 0 0 0 24" fill="none" stroke="rgba(0, 229, 255, 0.07)" stroke-width="1"/>
+    </pattern>
+    <filter id="glowSrv" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="480" height="270" fill="url(#bgSrv)"/>
+  <rect width="480" height="270" fill="url(#gridSrv)"/>
+
+  <!-- Border & Frame -->
+  <rect x="6" y="6" width="468" height="258" fill="none" stroke="rgba(0, 229, 255, 0.25)" stroke-width="1.5"/>
+
+  <!-- Corner Brackets -->
+  <path d="M 12 28 L 12 12 L 28 12" fill="none" stroke="#00e5ff" stroke-width="2.5"/>
+  <path d="M 452 12 L 468 12 L 468 28" fill="none" stroke="#00e5ff" stroke-width="2.5"/>
+  <path d="M 12 242 L 12 258 L 28 258" fill="none" stroke="#00e5ff" stroke-width="2.5"/>
+  <path d="M 452 258 L 468 258 L 468 242" fill="none" stroke="#00e5ff" stroke-width="2.5"/>
+
+  <!-- Top Badges -->
+  <rect x="22" y="20" width="100" height="20" fill="rgba(0, 229, 255, 0.15)" stroke="#00e5ff" stroke-width="1"/>
+  <text x="72" y="34" fill="#00e5ff" font-family="'JetBrains Mono', monospace" font-size="10" font-weight="700" letter-spacing="1.2" text-anchor="middle">CLOUD NODE</text>
+
+  <rect x="366" y="20" width="92" height="20" fill="rgba(16, 185, 129, 0.18)" stroke="#10b981" stroke-width="1"/>
+  <text x="412" y="34" fill="#10b981" font-family="'JetBrains Mono', monospace" font-size="10" font-weight="700" letter-spacing="1" text-anchor="middle">50% OFF</text>
+
+  <!-- Central Graphic: Isometric Server Rack -->
+  <g transform="translate(100, 140)">
+    <!-- Top Face -->
+    <polygon points="0,-45 45,-18 0,10 -45,-18" fill="#00e5ff" opacity="0.9"/>
+    <!-- Left Face -->
+    <polygon points="-45,-18 0,10 0,65 -45,38" fill="#063847"/>
+    <line x1="-38" y1="-2" x2="-6" y2="20" stroke="#00e5ff" stroke-width="1.5" opacity="0.8"/>
+    <line x1="-38" y1="14" x2="-6" y2="36" stroke="#00e5ff" stroke-width="1.5" opacity="0.8"/>
+    <line x1="-38" y1="30" x2="-6" y2="52" stroke="#00e5ff" stroke-width="1.5" opacity="0.8"/>
+    <circle cx="-32" cy="10" r="2.5" fill="#10b981"/>
+    <circle cx="-32" cy="26" r="2.5" fill="#00e5ff"/>
+    <circle cx="-32" cy="42" r="2.5" fill="#10b981"/>
+    <!-- Right Face -->
+    <polygon points="0,10 45,-18 45,38 0,65" fill="#0a5970"/>
+    <line x1="6" y1="20" x2="38" y2="-2" stroke="#7cedff" stroke-width="1.5" opacity="0.8"/>
+    <line x1="6" y1="36" x2="38" y2="14" stroke="#7cedff" stroke-width="1.5" opacity="0.8"/>
+    <line x1="6" y1="52" x2="38" y2="30" stroke="#7cedff" stroke-width="1.5" opacity="0.8"/>
+    <circle cx="32" cy="10" r="2.5" fill="#00e5ff"/>
+    <circle cx="32" cy="26" r="2.5" fill="#10b981"/>
+    <!-- Glowing Accent -->
+    <circle cx="0" cy="10" r="12" fill="#00f0ff" filter="url(#glowSrv)" opacity="0.85"/>
+  </g>
+
+  <!-- Typography Content -->
+  <text x="180" y="78" fill="#ffffff" font-family="'Space Grotesk', sans-serif" font-size="20" font-weight="800" letter-spacing="-0.5">
+    APEX MINECRAFT HOSTING
+  </text>
+  <text x="180" y="100" fill="#00e5ff" font-family="'Space Grotesk', sans-serif" font-size="13" font-weight="700" letter-spacing="0.3">
+    AMD RYZEN 9 7950X3D • 5.7GHz
+  </text>
+
+  <!-- Bullets -->
+  <g transform="translate(180, 118)" font-family="'Plus Jakarta Sans', sans-serif" font-size="11.5" fill="#94a3b8">
+    <circle cx="4" cy="5" r="3" fill="#00e5ff"/>
+    <text x="14" y="9" font-weight="600">DDR5 RAM • NVMe Gen4 Storage</text>
+    <circle cx="4" cy="23" r="3" fill="#10b981"/>
+    <text x="14" y="27" font-weight="600">1-Click Modpacks &amp; DDoS Shield</text>
+    <circle cx="4" cy="41" r="3" fill="#00e5ff"/>
+    <text x="14" y="45" font-weight="600">Instant Setup in &lt; 60 seconds</text>
+  </g>
+
+  <!-- CTA Button -->
+  <g transform="translate(180, 194)">
+    <rect width="278" height="38" fill="url(#btnSrv)" rx="0"/>
+    <text x="139" y="24" fill="#040810" font-family="'Space Grotesk', sans-serif" font-size="13" font-weight="800" letter-spacing="0.8" text-anchor="middle">
+      DEPLOY SERVER • 50% OFF →
+    </text>
+  </g>
+
+  <!-- Bottom Promo code -->
+  <text x="319" y="250" fill="#64748b" font-family="'JetBrains Mono', monospace" font-size="9" text-anchor="middle">
+    PROMO: CUBE50 • 24/7 SUPPORT
+  </text>
+</svg>

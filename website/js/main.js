@@ -112,36 +112,17 @@ function initSmoothScroll() {
 }
 
 /* ==========================================================================
-   6. Picture Ad Banner Rotator & AdSense Observer
+   6. Ad Sidebar Setup & AdSense Observer
    ========================================================================== */
 function initAdSidebar() {
-  const pictureAdUnit = document.getElementById('pictureAdUnit');
-  const pictureAdImg = document.getElementById('pictureAdImg');
   const adIns = document.querySelector('.ad-sidebar ins.adsbygoogle');
-
-  // Rotate between high-quality gaming picture ads
-  if (pictureAdImg) {
-    const banners = [
-      'images/ad_banner_gaming.svg',
-      'images/ad_banner_shaders.svg'
-    ];
-    let bannerIndex = 0;
-
-    setInterval(() => {
-      bannerIndex = (bannerIndex + 1) % banners.length;
-      pictureAdImg.style.opacity = '0';
-      setTimeout(() => {
-        pictureAdImg.src = banners[bannerIndex];
-        pictureAdImg.style.opacity = '1';
-      }, 300);
-    }, 8000);
-  }
+  const pictureUnits = document.querySelectorAll('.picture-ad-unit');
 
   // Observer to hide picture fallback ONLY if Google AdSense serves a confirmed live ad
-  if (pictureAdUnit && adIns) {
+  if (pictureUnits.length > 0 && adIns) {
     const observer = new MutationObserver(() => {
       if (adIns.getAttribute('data-ad-status') === 'filled') {
-        pictureAdUnit.style.display = 'none';
+        pictureUnits.forEach(u => u.style.display = 'none');
       }
     });
     observer.observe(adIns, { attributes: true, attributeFilter: ['data-ad-status'] });

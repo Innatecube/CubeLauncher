@@ -155,55 +155,70 @@ a {
   top: 96px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   z-index: 50;
+  max-height: calc(100vh - 110px);
+  overflow-y: auto;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+
+.ad-sidebar-sticky::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
 }
 
 .ad-sidebar-card {
   background: rgba(8, 12, 20, 0.96);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(0, 229, 255, 0.22);
+  border: 1px solid rgba(0, 229, 255, 0.2);
   border-radius: 0;
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.65), 0 0 20px rgba(0, 229, 255, 0.07);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55), 0 0 12px rgba(0, 229, 255, 0.05);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  transition: border-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.ad-sidebar-card:hover {
+  border-color: rgba(0, 229, 255, 0.45);
+  transform: translateY(-2px);
 }
 
 .ad-sidebar-header {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
-  padding: 10px 14px;
+  justify-content: space-between;
+  padding: 6px 10px;
   background: rgba(0, 229, 255, 0.04);
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .ad-badge {
   font-family: var(--font-mono);
-  font-size: 0.65rem;
+  font-size: 0.62rem;
   letter-spacing: 1.2px;
   font-weight: 700;
   color: var(--cyan-primary);
   text-transform: uppercase;
 }
 
+.ad-partner-tag {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  color: var(--text-dim);
+  font-weight: 600;
+  letter-spacing: 0.4px;
+}
+
 .ad-body {
   position: relative;
-  min-height: 270px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 8px;
+  padding: 5px;
   background: #05080d;
-}
-
-.ad-body ins.adsbygoogle {
-  width: 100%;
-  min-height: 250px;
-  z-index: 2;
 }
 
 /* Picture Ad Unit */
@@ -221,38 +236,45 @@ a {
   width: 100%;
   text-decoration: none;
   cursor: pointer;
-  transition: filter var(--transition-fast), transform var(--transition-fast);
+  transition: filter var(--transition-fast);
 }
 
 .picture-ad-link:hover {
-  filter: brightness(1.08) contrast(1.05);
+  filter: brightness(1.08) contrast(1.04);
 }
 
 .picture-ad-img {
   width: 100%;
   height: auto;
   display: block;
-  border: 1px solid rgba(0, 229, 255, 0.25);
+  border: 1px solid rgba(0, 229, 255, 0.15);
   border-radius: 0;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
-  transition: opacity 0.4s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
   background: #070c14;
 }
 
-/* Hide fallback image banner only when Google AdSense delivers a confirmed filled ad */
-.ad-body ins.adsbygoogle[data-ad-status="filled"] + .picture-ad-unit {
-  display: none !important;
+.ad-sidebar-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 10px;
+  background: rgba(0, 0, 0, 0.4);
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+  font-size: 0.62rem;
+}
+
+.ad-footer-brand {
+  color: var(--text-dim);
+  font-weight: 500;
 }
 
 .ad-verified-tag {
   font-family: var(--font-mono);
-  font-size: 0.65rem;
+  font-size: 0.6rem;
   color: var(--cyan-primary);
   font-weight: 700;
   letter-spacing: 0.5px;
 }
-
-.ad-sidebar-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
