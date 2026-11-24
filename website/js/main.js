@@ -8,7 +8,6 @@ document.addEventListener('DOMContentLoaded', () => {
   initFaqAccordion();
   initOsDetection();
   initSmoothScroll();
-  initAdSidebar();
 });
 
 /* ==========================================================================
@@ -111,20 +110,4 @@ function initSmoothScroll() {
   });
 }
 
-/* ==========================================================================
-   6. Ad Sidebar Setup & AdSense Observer
-   ========================================================================== */
-function initAdSidebar() {
-  const adIns = document.querySelector('.ad-sidebar ins.adsbygoogle');
-  const pictureUnits = document.querySelectorAll('.picture-ad-unit');
 
-  // Observer to hide picture fallback ONLY if Google AdSense serves a confirmed live ad
-  if (pictureUnits.length > 0 && adIns) {
-    const observer = new MutationObserver(() => {
-      if (adIns.getAttribute('data-ad-status') === 'filled') {
-        pictureUnits.forEach(u => u.style.display = 'none');
-      }
-    });
-    observer.observe(adIns, { attributes: true, attributeFilter: ['data-ad-status'] });
-  }
-}
